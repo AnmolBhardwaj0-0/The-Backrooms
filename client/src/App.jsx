@@ -6,6 +6,13 @@ import Lobby from './components/Lobby';
 import RoomView from './components/RoomView';
 import { generateAnonymousIdentity } from './utils/identity';
 import { sounds } from './utils/sound';
+import { CAMPUS_PRESETS, requestDeviceLocation } from './utils/geolocation';
+
+const BACKEND_PROD_URL = 'https://the-backrooms-1.onrender.com';
+const SERVER_URL =
+  import.meta.env.VITE_SOCKET_URL ||
+  import.meta.env.VITE_SERVER_URL ||
+  (import.meta.env.DEV ? 'http://localhost:3001' : BACKEND_PROD_URL);
 
 const VIEW_ORDER = {
   landing: 0,
@@ -44,7 +51,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState('landing'); // 'landing' | 'lobby' | 'room'
   const [direction, setDirection] = useState(1); // 1 = forward, -1 = back
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('soulnook_theme') || 'light';
+    return localStorage.getItem('soulnook_theme') || 'dark';
   });
 
   const [userProfile, setUserProfile] = useState(() => {
@@ -63,8 +70,28 @@ export default function App() {
   const socketRef = useRef(null);
 
   if (!socketRef.current) {
-    socketRef.current = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001');
+    socketRef.current = io(SERVER_URL, {
+      transports: ['websocket', 'polling'],
+      withCredentials: true
+    });
   }
+
+  // GPS Coordinates (kept in memory, seamlessly connected)
+  const [coords, setCoords] = useState(() => {
+    const defaultPreset = CAMPUS_PRESETS.find(p => p.id === 'library');
+    return defaultPreset ? defaultPreset.coords : { lat: 28.545000, lon: 77.192600 };
+  });
+
+  // Attempt device GPS quietly in background if available
+  useEffect(() => {
+    requestDeviceLocation()
+      .then(({ coords: deviceCoords }) => {
+        if (deviceCoords) setCoords(deviceCoords);
+      })
+      .catch(() => {
+        // Silently use campus origin preset
+      });
+  }, []);
 
   // Sync theme with HTML root attribute
   useEffect(() => {
@@ -124,18 +151,22 @@ export default function App() {
 
   const handleJoinRoomByCode = (code) => {
     if (!code || !socketRef.current) return;
-    socketRef.current.emit('join_room_by_code', { code, user: userProfile }, ({ success, roomId }) => {
-      if (success && roomId) {
-        handleJoinRoom(roomId);
+    socketRef.current.emit('join_room_by_code', { code, user: userProfile, coords }, (res) => {
+      if (res && res.success && res.roomId) {
+        handleJoinRoom(res.roomId);
+      } else if (res && res.error) {
+        alert(`❌ ${res.error}`);
       }
     });
   };
 
   const handleCreateRoom = (roomData) => {
     if (!socketRef.current) return;
-    socketRef.current.emit('create_room', roomData, ({ success, roomId }) => {
-      if (success && roomId) {
-        handleJoinRoom(roomId);
+    socketRef.current.emit('create_room', { ...roomData, coords, isProximity: true }, (res) => {
+      if (res && res.success && res.roomId) {
+        handleJoinRoom(res.roomId);
+      } else if (res && res.error) {
+        alert(`⚠️ ${res.error}`);
       }
     });
   };
@@ -216,6 +247,7 @@ export default function App() {
               onBackToLanding={() => changeView('landing')}
               theme={theme}
               onToggleTheme={toggleTheme}
+              coords={coords}
             />
           )}
 
@@ -227,6 +259,7 @@ export default function App() {
               onLeaveRoom={handleLeaveRoom}
               theme={theme}
               onToggleTheme={toggleTheme}
+              coords={coords}
             />
           )}
         </motion.div>

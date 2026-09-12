@@ -23,7 +23,8 @@ export default function RoomView({
   userProfile,
   onLeaveRoom,
   theme = 'dark',
-  onToggleTheme
+  onToggleTheme,
+  coords
 }) {
   // Room state
   const [roomData, setRoomData] = useState({
@@ -41,6 +42,9 @@ export default function RoomView({
   const [typingUsers, setTypingUsers] = useState(new Set());
   const [floatingParticles, setFloatingParticles] = useState([]);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [countdown, setCountdown] = useState({ isCounting: false, seconds: 5, gameName: '' });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isLofiPlaying, setIsLofiPlaying] = useState(false);
 
   // Multi-Game State
   const [gameState, setGameState] = useState({
@@ -118,7 +122,7 @@ export default function RoomView({
   useEffect(() => {
     if (!socket) return;
 
-    socket.emit('join_room', { roomId, user: userProfile });
+    socket.emit('join_room', { roomId, user: userProfile, coords });
 
     socket.on('room_joined_data', (data) => {
       if (data.room) setRoomData(data.room);
@@ -253,6 +257,51 @@ export default function RoomView({
       triggerReactionParticle('💥');
     });
 
+    // 5-Second Cooldown Countdown Events
+    socket.on('game_countdown_start', ({ seconds, gameType, gameName }) => {
+      setCountdown({ isCounting: true, seconds: seconds || 5, gameName: gameName || 'Game' });
+      setGameState(prev => ({ ...prev, type: gameType || prev.type }));
+      sounds.playPop();
+    });
+
+    socket.on('game_countdown_tick', ({ seconds, gameType }) => {
+      setCountdown(prev => ({ ...prev, seconds }));
+      sounds.playBoing();
+    });
+
+    socket.on('game_countdown_end', () => {
+      setCountdown({ isCounting: false, seconds: 0, gameName: '' });
+      sounds.playSuccess();
+    });
+
+    // In-Chat Game Switch Poll Sync
+    socket.on('poll_updated', ({ pollId, yesCount, noCount, totalUsers }) => {
+      setMessages(prev => prev.map(m => {
+        if (m.poll && m.poll.id === pollId) {
+          return {
+            ...m,
+            poll: { ...m.poll, yesCount, noCount, totalUsers }
+          };
+        }
+        return m;
+      }));
+      sounds.playPop();
+    });
+
+    socket.on('poll_resolved', ({ pollId, passed, targetGame, gameName }) => {
+      setMessages(prev => prev.map(m => {
+        if (m.poll && m.poll.id === pollId) {
+          return {
+            ...m,
+            poll: { ...m.poll, isResolved: true, passed }
+          };
+        }
+        return m;
+      }));
+      if (passed) sounds.playSuccess();
+      else sounds.playPop();
+    });
+
     return () => {
       socket.off('room_joined_data');
       socket.off('user_joined');
@@ -273,6 +322,11 @@ export default function RoomView({
       socket.off('word_chain_update');
       socket.off('emoji_targets_respawn');
       socket.off('emoji_target_popped');
+      socket.off('game_countdown_start');
+      socket.off('game_countdown_tick');
+      socket.off('game_countdown_end');
+      socket.off('poll_updated');
+      socket.off('poll_resolved');
       socket.emit('leave_room', { roomId });
     };
   }, [socket, roomId, userProfile]);
@@ -472,10 +526,22 @@ export default function RoomView({
   };
 
   // Game Control Handlers
-  const handleSwitchGame = (gameType) => {
+  const handleSelectGameDropdown = (newGameType) => {
+    if (newGameType === gameState.type) return;
     sounds.playBoing();
-    setGameState(prev => ({ ...prev, type: gameType }));
-    if (socket) socket.emit('switch_game', { gameType });
+    if (socket) {
+      socket.emit('propose_game_switch', { targetGame: newGameType });
+    }
+  };
+
+  const handleVotePoll = (pollId, vote) => {
+    if (!socket) return;
+    sounds.playPop();
+    socket.emit('vote_game_poll', { pollId, vote });
+  };
+
+  const handleSwitchGame = (gameType) => {
+    handleSelectGameDropdown(gameType);
   };
 
   const handleToggleGame = () => {
@@ -613,20 +679,75 @@ export default function RoomView({
             ))}
           </div>
 
-          {/* Theme Toggle */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.94 }}
-            className="btn-pill-secondary hover-lift"
-            style={{ padding: '6px 12px', fontSize: '0.82rem' }}
-            onClick={() => {
-              sounds.playPop();
-              onToggleTheme();
-            }}
-            title="Toggle Light / Dark Mode"
-          >
-            {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
-          </motion.button>
+          {/* Rightmost Settings Button & Popover (Photo 5) */}
+          <div className="room-settings-wrapper" style={{ position: 'relative' }}>
+            <motion.button
+              whileHover={{ scale: 1.1, rotate: 30 }}
+              whileTap={{ scale: 0.9 }}
+              className={`btn-settings-gear hover-lift ${isSettingsOpen ? 'active' : ''}`}
+              onClick={() => {
+                sounds.playPop();
+                setIsSettingsOpen(!isSettingsOpen);
+              }}
+              title="Lounge Settings & Options"
+            >
+              ⚙️
+            </motion.button>
+
+            <AnimatePresence>
+              {isSettingsOpen && (
+                <motion.div
+                  className="settings-popover-card glass-panel"
+                  initial={{ opacity: 0, scale: 0.92, y: 8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.94, y: 6 }}
+                  transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <div className="settings-popover-header">
+                    <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>⚙️ Lounge Settings</span>
+                    <button className="settings-close-x" onClick={() => setIsSettingsOpen(false)}>✕</button>
+                  </div>
+
+                  <div className="settings-options-list">
+                    <button
+                      className="settings-menu-item"
+                      onClick={() => {
+                        sounds.playPop();
+                        onToggleTheme();
+                      }}
+                    >
+                      <span>{theme === 'light' ? '🌙 Dark Mode' : '☀️ Light Mode'}</span>
+                    </button>
+
+                    <button
+                      className="settings-menu-item"
+                      onClick={() => {
+                        sounds.playBoing();
+                        sounds.toggleAmbient();
+                        setIsLofiPlaying(prev => !prev);
+                      }}
+                    >
+                      <span>🎵 {isLofiPlaying ? 'Pause Lo-Fi' : 'Play Lo-Fi'}</span>
+                    </button>
+
+                    <button
+                      className="settings-menu-item"
+                      onClick={handleCopyRoomCode}
+                    >
+                      <span>📋 {copiedCode ? '✓ Copied Code' : `Code: #${displayRoomCode}`}</span>
+                    </button>
+
+                    <button
+                      className="settings-menu-item danger"
+                      onClick={onLeaveRoom}
+                    >
+                      <span>🚪 Leave Lounge</span>
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </header>
 
@@ -634,80 +755,128 @@ export default function RoomView({
       <main className="room-split-layout">
         {/* LEFT: Continuous In-Window Interactive Arena */}
         <section className="game-pane">
-          {/* Top Activity Switcher Bar */}
+          {/* Minimal Game Section with Dropdown List (Photo 4) */}
           <div className="arena-activity-nav">
-            <div className="arena-tabs-scroll">
-              {[
-                { id: 'scribble', icon: '🎨', label: 'Canvas & Scribble' },
-                { id: 'trivia', icon: '⚡', label: 'Trivia Blitz' },
-                { id: 'wordchain', icon: '🔗', label: 'Word Chain' },
-                { id: 'emojipop', icon: '💥', label: 'Emoji Pop' },
-                { id: 'truthvent', icon: '🎭', label: 'Truth & Vent' }
-              ].map(tab => (
-                <motion.button
-                  key={tab.id}
-                  whileHover={{ scale: 1.03, y: -1 }}
-                  whileTap={{ scale: 0.95 }}
-                  className={`arena-tab-pill hover-lift ${gameState.type === tab.id ? 'active' : ''}`}
-                  onClick={() => handleSwitchGame(tab.id)}
-                >
-                  <span>{tab.icon}</span>
-                  <span>{tab.label}</span>
-                </motion.button>
-              ))}
+            <div className="game-select-dropdown-container">
+              <span className="game-select-icon">
+                {gameState.type === 'scribble' && '🎨'}
+                {gameState.type === 'trivia' && '⚡'}
+                {gameState.type === 'wordchain' && '🔗'}
+                {gameState.type === 'emojipop' && '💥'}
+                {gameState.type === 'truthvent' && '🎭'}
+              </span>
+              <select
+                className="game-dropdown-select hover-lift"
+                value={gameState.type}
+                onChange={(e) => handleSelectGameDropdown(e.target.value)}
+                disabled={countdown.isCounting}
+                title="Select mini-game (initiates a vote if peers are present)"
+              >
+                <option value="scribble">🎨 Campus Scribble & Guess</option>
+                <option value="trivia">⚡ Campus Trivia Blitz</option>
+                <option value="wordchain">🔗 Rapid Word Chain</option>
+                <option value="emojipop">💥 Emoji Pop Reflex</option>
+                <option value="truthvent">🎭 Truth, Vent & Dare</option>
+              </select>
             </div>
 
             {/* Quick Round Control Action */}
             <div className="arena-round-actions">
-              {gameState.type === 'scribble' && (
-                <motion.button
-                  whileHover={{ scale: 1.03, y: -1 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="btn-pill-secondary hover-lift"
-                  style={{ padding: '5px 12px', fontSize: '0.78rem' }}
-                  onClick={handleToggleGame}
-                >
-                  {gameState.isActive ? '⏸️ Stop Round' : '▶️ Play Scribble'}
-                </motion.button>
-              )}
-              {gameState.type === 'trivia' && (
-                <motion.button
-                  whileHover={{ scale: 1.03, y: -1 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="btn-pill-primary hover-lift"
-                  style={{ padding: '5px 14px', fontSize: '0.78rem' }}
-                  onClick={handleToggleGame}
-                >
-                  {gameState.isActive ? 'Next Question ➔' : 'Start Trivia'}
-                </motion.button>
-              )}
-              {gameState.type === 'truthvent' && (
-                <motion.button
-                  whileHover={{ scale: 1.03, y: -1 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="btn-pill-primary hover-lift"
-                  style={{ padding: '5px 14px', fontSize: '0.78rem' }}
-                  onClick={handleNextTruthVent}
-                >
-                  Next Prompt ➔
-                </motion.button>
-              )}
-              {gameState.type === 'emojipop' && (
-                <motion.button
-                  whileHover={{ scale: 1.03, y: -1 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="btn-pill-secondary hover-lift"
-                  style={{ padding: '5px 12px', fontSize: '0.78rem' }}
-                  onClick={handleToggleGame}
-                >
-                  {gameState.isActive ? 'Pause Pop' : 'Start Pop'}
-                </motion.button>
+              {countdown.isCounting ? (
+                <div className="countdown-pill-badge hover-lift">
+                  <span className="pulsing-ping-dot"></span>
+                  <span>Starting in {countdown.seconds}s...</span>
+                </div>
+              ) : (
+                <>
+                  {gameState.type === 'scribble' && (
+                    <motion.button
+                      whileHover={{ scale: 1.03, y: -1 }}
+                      whileTap={{ scale: 0.95 }}
+                      className={`btn-pill-primary hover-lift ${gameState.isActive ? 'active-stop' : ''}`}
+                      style={{ padding: '6px 16px', fontSize: '0.8rem' }}
+                      onClick={handleToggleGame}
+                    >
+                      {gameState.isActive ? '⏹️ Stop Round' : '▶️ Play Scribble'}
+                    </motion.button>
+                  )}
+                  {gameState.type === 'trivia' && (
+                    <motion.button
+                      whileHover={{ scale: 1.03, y: -1 }}
+                      whileTap={{ scale: 0.95 }}
+                      className="btn-pill-primary hover-lift"
+                      style={{ padding: '6px 16px', fontSize: '0.8rem' }}
+                      onClick={handleToggleGame}
+                    >
+                      {gameState.isActive ? 'Next Question ➔' : '▶️ Start Trivia'}
+                    </motion.button>
+                  )}
+                  {gameState.type === 'truthvent' && (
+                    <motion.button
+                      whileHover={{ scale: 1.03, y: -1 }}
+                      whileTap={{ scale: 0.95 }}
+                      className="btn-pill-primary hover-lift"
+                      style={{ padding: '6px 16px', fontSize: '0.8rem' }}
+                      onClick={handleNextTruthVent}
+                    >
+                      Next Prompt ➔
+                    </motion.button>
+                  )}
+                  {gameState.type === 'emojipop' && (
+                    <motion.button
+                      whileHover={{ scale: 1.03, y: -1 }}
+                      whileTap={{ scale: 0.95 }}
+                      className={`btn-pill-primary hover-lift ${gameState.isActive ? 'active-stop' : ''}`}
+                      style={{ padding: '6px 16px', fontSize: '0.8rem' }}
+                      onClick={handleToggleGame}
+                    >
+                      {gameState.isActive ? '⏹️ Stop Pop' : '▶️ Start Pop'}
+                    </motion.button>
+                  )}
+                  {gameState.type === 'wordchain' && (
+                    <motion.button
+                      whileHover={{ scale: 1.03, y: -1 }}
+                      whileTap={{ scale: 0.95 }}
+                      className={`btn-pill-primary hover-lift ${gameState.isActive ? 'active-stop' : ''}`}
+                      style={{ padding: '6px 16px', fontSize: '0.8rem' }}
+                      onClick={handleToggleGame}
+                    >
+                      {gameState.isActive ? '⏹️ End Chain' : '▶️ Start Chain'}
+                    </motion.button>
+                  )}
+                </>
               )}
             </div>
           </div>
 
           {/* Active Activity Screen Area */}
-          <div className="arena-stage-container">
+          <div className="arena-stage-container" style={{ position: 'relative' }}>
+            {/* 5-Second Cooldown Countdown Overlay */}
+            <AnimatePresence>
+              {countdown.isCounting && (
+                <motion.div
+                  className="countdown-overlay-modal"
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <div className="countdown-display-card glass-panel">
+                    <span className="countdown-sub-title">GAME STARTING IN</span>
+                    <motion.span
+                      key={countdown.seconds}
+                      initial={{ scale: 1.4, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ duration: 0.3 }}
+                      className="countdown-big-number"
+                    >
+                      {countdown.seconds}
+                    </motion.span>
+                    <span className="countdown-game-tag">{countdown.gameName}</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <AnimatePresence mode="wait">
               {/* 1. Canvas & Scribble Screen */}
               {gameState.type === 'scribble' && (
@@ -1075,15 +1244,66 @@ export default function RoomView({
               <span className="pulsing-ping-dot"></span>
               <span style={{ fontSize: '0.88rem', fontWeight: 700 }}>Real-Time Vent Feed</span>
             </div>
-            <span className="badge-pill" style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-sage)' }}>
-              🔒 Zero-Trace Chat
-            </span>
           </div>
 
           {/* Messages Feed */}
           <div className="chat-messages-container">
             <AnimatePresence initial={false}>
               {messages.map((m) => {
+                if (m.isPoll && m.poll) {
+                  const poll = m.poll;
+                  const hasVotedYes = poll.yesVotes?.includes(socket?.id) || poll.userVote === 'yes';
+                  const hasVotedNo = poll.noVotes?.includes(socket?.id) || poll.userVote === 'no';
+
+                  return (
+                    <motion.div
+                      key={m.id}
+                      initial={{ opacity: 0, y: 10, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      className="poll-chat-bubble glass-panel hover-lift"
+                    >
+                      <div className="poll-chat-header">
+                        <span className="poll-chat-badge">📊 GAME VOTE POLL</span>
+                        {poll.isResolved ? (
+                          <span className={`poll-status-tag ${poll.passed ? 'passed' : 'failed'}`}>
+                            {poll.passed ? '✓ PASSED' : '✕ REJECTED'}
+                          </span>
+                        ) : (
+                          <span className="poll-live-indicator">
+                            <span className="pulsing-ping-dot" style={{ width: '6px', height: '6px' }}></span>
+                            Active
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="poll-prompt-text">
+                        Switch game to <strong>{poll.gameName}</strong>?
+                      </p>
+
+                      {!poll.isResolved && (
+                        <div className="poll-vote-buttons-row">
+                          <motion.button
+                            whileHover={{ scale: 1.04 }}
+                            whileTap={{ scale: 0.94 }}
+                            className={`poll-btn yes ${hasVotedYes ? 'active' : ''}`}
+                            onClick={() => handleVotePoll(poll.id, 'yes')}
+                          >
+                            👍 Yes ({poll.yesCount || 0})
+                          </motion.button>
+                          <motion.button
+                            whileHover={{ scale: 1.04 }}
+                            whileTap={{ scale: 0.94 }}
+                            className={`poll-btn no ${hasVotedNo ? 'active' : ''}`}
+                            onClick={() => handleVotePoll(poll.id, 'no')}
+                          >
+                            👎 No ({poll.noCount || 0})
+                          </motion.button>
+                        </div>
+                      )}
+                    </motion.div>
+                  );
+                }
+
                 if (m.isSystem) {
                   return (
                     <motion.div

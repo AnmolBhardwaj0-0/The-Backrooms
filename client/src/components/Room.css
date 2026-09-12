@@ -1150,3 +1150,312 @@
   border: 1px solid var(--border-subtle);
 }
 
+/* ----------------------------------------------------
+   MINIMAL GAME DROPDOWN SELECTOR & ACTIONS
+   ---------------------------------------------------- */
+.game-select-dropdown-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-well);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.2s ease;
+}
+
+.game-select-dropdown-container:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.game-select-icon {
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+}
+
+.game-dropdown-select {
+  background: transparent;
+  color: var(--text-primary);
+  border: none;
+  font-family: var(--font-main);
+  font-size: 0.85rem;
+  font-weight: 700;
+  outline: none;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.game-dropdown-select option {
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+}
+
+.btn-pill-primary.active-stop {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* ----------------------------------------------------
+   5-SECOND COUNTDOWN COOLDOWN OVERLAY
+   ---------------------------------------------------- */
+.countdown-overlay-modal {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 10, 12, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.countdown-display-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 48px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-glow);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7), 0 0 30px var(--accent-glow);
+  text-align: center;
+}
+
+.countdown-sub-title {
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--accent-amber);
+  margin-bottom: 6px;
+}
+
+.countdown-big-number {
+  font-size: 5rem;
+  font-weight: 900;
+  font-family: var(--font-heading);
+  color: var(--text-primary);
+  line-height: 1;
+  text-shadow: 0 0 24px var(--accent-glow);
+  margin: 10px 0;
+}
+
+.countdown-game-tag {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent-lavender);
+}
+
+.countdown-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* ----------------------------------------------------
+   IN-CHAT INTERACTIVE VOTING POLL
+   ---------------------------------------------------- */
+.poll-chat-bubble {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.poll-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.poll-chat-badge {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--accent-lavender);
+}
+
+.poll-status-tag {
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.poll-status-tag.passed {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-sage);
+}
+
+.poll-status-tag.failed {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.poll-live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  color: var(--accent-amber);
+  font-weight: 700;
+}
+
+.poll-prompt-text {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.35;
+}
+
+.poll-vote-buttons-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.poll-btn {
+  flex: 1;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--bg-well);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.18s ease;
+}
+
+.poll-btn.yes:hover,
+.poll-btn.yes.active {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.poll-btn.no:hover,
+.poll-btn.no.active {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+/* ----------------------------------------------------
+   RIGHTMOST SETTINGS GEAR BUTTON & POPOVER MENU
+   ---------------------------------------------------- */
+.btn-settings-gear {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: all 0.22s var(--ease-sqs);
+}
+
+.btn-settings-gear:hover,
+.btn-settings-gear.active {
+  background: var(--bg-well);
+  border-color: var(--border-focus);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.settings-popover-card {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: 230px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 20px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+
+.settings-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-close-x {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.settings-close-x:hover {
+  color: var(--text-primary);
+  background: var(--bg-well);
+}
+
+.settings-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-menu-item {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-well);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-main);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.settings-menu-item:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-glow);
+  transform: translateX(2px);
+}
+
+.settings-menu-item.danger {
+  color: #ef4444;
+}
+
+.settings-menu-item.danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+}

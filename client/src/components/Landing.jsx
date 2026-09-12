@@ -234,25 +234,15 @@ export default function Landing({
               </motion.button>
             </div>
 
-            {/* Primary Action Button */}
+            {/* Proceed Action Button */}
             <motion.button
-              whileHover={{ scale: 1.02, y: -1 }}
+              whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.97 }}
               className="backrooms-btn-primary"
               onClick={handleEnter}
             >
-              <span>Enter Lounges</span>
+              <span>Proceed</span>
               <span className="arrow-glyph">→</span>
-            </motion.button>
-
-            {/* Secondary Action Button */}
-            <motion.button
-              whileHover={{ scale: 1.015 }}
-              whileTap={{ scale: 0.97 }}
-              className="backrooms-btn-secondary"
-              onClick={handleCreate}
-            >
-              + Create Lounge
             </motion.button>
 
             {/* Join by Code */}
