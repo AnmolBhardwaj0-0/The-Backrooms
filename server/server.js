@@ -9,18 +9,25 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const allowedOrigins = [
+const ALLOWED_ORIGINS = [
   'https://ycrxi75f.insforge.site',
   'https://the-backrooms-1.onrender.com',
   'http://localhost:5173',
   'http://localhost:3000',
-  'http://localhost:3001'
+  'http://localhost:3001',
+  'http://localhost:4173'
 ];
 
 const app = express();
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.insforge.site') || origin.endsWith('.onrender.com')) {
+    if (!origin) return callback(null, true);
+    if (
+      ALLOWED_ORIGINS.includes(origin) ||
+      origin.endsWith('.insforge.site') ||
+      origin.endsWith('.onrender.com') ||
+      origin.includes('localhost')
+    ) {
       return callback(null, true);
     }
     return callback(null, true);
@@ -131,119 +138,54 @@ const TRUTH_VENT_DARE_PROMPTS = [
 const EMOJI_POP_TARGETS = ['🎯', '⭐', '🔥', '💎', '🦄', '🍕', '🎉', '⚡', '🐱', '🚀'];
 
 // ==========================================
-// 2. ROOM REGISTRY
+// 2. ROOM REGISTRY (Dynamic, 100% Ephemeral - 0 default/test rooms)
 // ==========================================
 const rooms = new Map();
 
-const defaultLounges = [
-  {
-    id: 'lounge-midnight-coffee',
-    code: 'COFFEE',
-    name: 'Midnight Espresso ☕',
-    category: 'Study',
-    selectedGame: 'scribble',
-    description: 'Quiet crammers & 2AM chill lo-fi energy. Synchronized canvas & cozy chat.',
-    tags: ['Quiet', 'Lo-Fi', 'Study'],
-    created: Date.now(),
-    isPermanent: true
-  },
-  {
-    id: 'lounge-scribble-arena',
-    code: 'DOODLE',
-    name: 'Campus Scribble Arena 🎨',
-    category: 'Mini-Game',
-    selectedGame: 'scribble',
-    description: 'Speed Pictionary rounds with campus prompts. Guess fast & score points!',
-    tags: ['Drawing', 'Fast-Paced', 'Pictionary'],
-    created: Date.now(),
-    isPermanent: true
-  },
-  {
-    id: 'lounge-trivia-blitz',
-    code: 'TRIVIA',
-    name: 'Campus Trivia Blitz ⚡',
-    category: 'Mini-Game',
-    selectedGame: 'trivia',
-    description: 'Rapid-fire campus & tech trivia showdown. 14 seconds per question!',
-    tags: ['Trivia', 'Buzzer', 'Challenge'],
-    created: Date.now(),
-    isPermanent: true
-  },
-  {
-    id: 'lounge-word-chain',
-    code: 'CHAINS',
-    name: 'Rapid Word Chain 🔗',
-    category: 'Mini-Game',
-    selectedGame: 'wordchain',
-    description: 'Keep the word chain alive without repeating or timing out. Build huge combos!',
-    tags: ['WordGame', 'Speed', 'Combo'],
-    created: Date.now(),
-    isPermanent: true
-  },
-  {
-    id: 'lounge-emoji-pop',
-    code: 'ARCADE',
-    name: 'Emoji Pop Reflex 💥',
-    category: 'Mini-Game',
-    selectedGame: 'emojipop',
-    description: 'Fast-paced reaction arcade! Click the popping target emojis before they vanish.',
-    tags: ['Arcade', 'Reflex', 'Pop'],
-    created: Date.now(),
-    isPermanent: true
-  },
-  {
-    id: 'lounge-truth-vent',
-    code: 'CONFES',
-    name: 'Truth, Vent & Dare 🎭',
-    category: 'Rant',
-    selectedGame: 'truthvent',
-    description: 'Zero-filter campus confessionals, cathartic vents, and hilarious dares.',
-    tags: ['Confessions', 'Venting', 'Cathartic'],
-    created: Date.now(),
-    isPermanent: true
+// ==========================================
+// 2. PROXIMITY & GEOLOCATION ZERO-KNOWLEDGE ENGINE
+// ==========================================
+const EARTH_RADIUS_METERS = 6371000;
+
+function getHaversineDistance(lat1, lon1, lat2, lon2) {
+  if (lat1 === undefined || lon1 === undefined || lat2 === undefined || lon2 === undefined) return Infinity;
+  const toRad = (angle) => (angle * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(EARTH_RADIUS_METERS * c);
+}
+
+function formatDistanceBucket(meters) {
+  if (meters === Infinity || meters === null || meters === undefined) return 'Unknown';
+  if (meters <= 25) return '< 25m';
+  if (meters <= 50) return '~25–50m';
+  if (meters <= 100) return '~50–100m';
+  if (meters <= 200) return '~100–200m';
+  return '> 200m';
+}
+
+function getGameDisplayName(type) {
+  switch (type) {
+    case 'trivia': return 'Campus Trivia Blitz';
+    case 'wordchain': return 'Rapid Word Chain';
+    case 'emojipop': return 'Emoji Pop Reflex';
+    case 'truthvent': return 'Truth, Vent & Dare';
+    case 'scribble':
+    default: return 'Campus Scribble';
   }
-];
+}
 
-// Initialize default rooms
-defaultLounges.forEach(lounge => {
-  rooms.set(lounge.id, {
-    ...lounge,
-    users: new Map(),
-    canvasStrokes: [],
-    messages: [],
-    game: {
-      type: lounge.selectedGame || 'scribble',
-      isActive: false,
-      scores: {},
-      timerInterval: null,
-      timeLeft: 30,
-
-      // Scribble
-      currentDrawer: null,
-      currentWord: '',
-      revealedWord: '',
-      hasGuessed: new Set(),
-
-      // Trivia
-      triviaQuestion: null,
-      triviaAnswers: new Map(),
-
-      // Word Chain
-      currentLetter: 'C',
-      lastWord: 'Campus',
-      wordHistory: ['Campus'],
-      streakCount: 1,
-
-      // Truth/Vent
-      currentPrompt: null,
-
-      // Emoji Pop
-      emojiTargets: []
-    }
-  });
-});
+// In-Memory Anonymous Candidate Pool for Phase 4 Proximity Radar & Matchmaking
+// socketId -> { socketId, user, coords: { lat, lon }, preferredGames: string[], joinedAt: number, lastAlertAt: number }
+const proximityCandidates = new Map();
+const pendingMatches = new Map();
 
 function formatRoomForLobby(room) {
+  if (room.isPrivate) return null; // Friend-created private session hidden from public lobby!
   return {
     id: room.id,
     code: room.code || (room.id.replace('lounge-', '').slice(0, 6).toUpperCase()),
@@ -254,8 +196,15 @@ function formatRoomForLobby(room) {
     tags: room.tags || [],
     userCount: room.users ? room.users.size : 0,
     created: room.created,
-    isGameActive: room.game?.isActive || false
+    isGameActive: room.game?.isActive || false,
+    isProximity: !!room.isProximity,
+    radius: room.radius || 100
+    // NOTE: room.anchorCoords is NEVER sent to lobby/peers! Kept private in server RAM.
   };
+}
+
+function getLobbyRooms() {
+  return Array.from(rooms.values()).map(formatRoomForLobby).filter(Boolean);
 }
 
 // REST Endpoints
@@ -264,7 +213,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.get('/api/rooms', (req, res) => {
-  res.json(Array.from(rooms.values()).map(formatRoomForLobby));
+  res.json(getLobbyRooms());
 });
 
 // ==========================================
@@ -559,19 +508,13 @@ app.get('/api/pins', (req, res) => {
 // 3. MULTI-GAME ENGINE HANDLERS
 // ==========================================
 
-function clearRoomTimer(room) {
-  if (room.game.timerInterval) {
-    clearInterval(room.game.timerInterval);
-    room.game.timerInterval = null;
-  }
-}
-
 // 1. Scribble Game
 function startScribbleGame(roomId) {
   const room = rooms.get(roomId);
   if (!room || room.users.size === 0) return;
 
-  const userList = Array.from(room.users.values());
+  const eligibleUsers = Array.from(room.users.values()).filter(u => !u.isSpectator);
+  const userList = eligibleUsers.length > 0 ? eligibleUsers : Array.from(room.users.values());
   const nextDrawer = userList[Math.floor(Math.random() * userList.length)];
   const randomWord = CAMPUS_WORDS[Math.floor(Math.random() * CAMPUS_WORDS.length)];
   const maskedWord = randomWord.replace(/[a-zA-Z]/g, '_ ');
@@ -943,6 +886,105 @@ function startEmojiPopGame(roomId) {
   }, 1000);
 }
 
+function clearRoomTimer(room) {
+  if (!room || !room.game) return;
+  if (room.game.timerInterval) {
+    clearInterval(room.game.timerInterval);
+    room.game.timerInterval = null;
+  }
+  if (room.game.countdownInterval) {
+    clearInterval(room.game.countdownInterval);
+    room.game.countdownInterval = null;
+  }
+}
+
+function startCountdownAndLaunch(roomId, gameType) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+
+  clearRoomTimer(room);
+  room.game.isActive = false;
+  room.game.isCountdown = true;
+  room.game.countdownSeconds = 5;
+  room.game.type = gameType;
+
+  io.to(roomId).emit('game_countdown_start', {
+    seconds: 5,
+    gameType,
+    gameName: getGameDisplayName(gameType)
+  });
+
+  const countdownMsg = {
+    id: `sys-cd-${Date.now()}`,
+    sender: { name: '⏱️ Soulnook Arena', color: '#f59e0b', avatar: '🎮' },
+    text: `Get ready! Starting ${getGameDisplayName(gameType)} in 5 seconds...`,
+    timestamp: Date.now(),
+    isSystem: true
+  };
+  room.messages.push(countdownMsg);
+  io.to(roomId).emit('new_message', countdownMsg);
+
+  let remaining = 5;
+  room.game.countdownInterval = setInterval(() => {
+    remaining -= 1;
+    if (!rooms.has(roomId) || !room.game || !room.game.isCountdown) {
+      if (room.game?.countdownInterval) clearInterval(room.game.countdownInterval);
+      return;
+    }
+
+    if (remaining > 0) {
+      room.game.countdownSeconds = remaining;
+      io.to(roomId).emit('game_countdown_tick', { seconds: remaining, gameType });
+    } else {
+      clearInterval(room.game.countdownInterval);
+      room.game.countdownInterval = null;
+      room.game.isCountdown = false;
+      io.to(roomId).emit('game_countdown_end', { gameType });
+      launchGame(roomId, gameType);
+    }
+  }, 1000);
+}
+
+function resolvePoll(roomId, pollId) {
+  const room = rooms.get(roomId);
+  if (!room || !room.activePoll || room.activePoll.id !== pollId || room.activePoll.isResolved) return;
+
+  const poll = room.activePoll;
+  poll.isResolved = true;
+
+  const passed = poll.yesCount >= poll.noCount && poll.yesCount >= 1;
+
+  io.to(roomId).emit('poll_resolved', {
+    pollId,
+    passed,
+    yesCount: poll.yesCount,
+    noCount: poll.noCount,
+    targetGame: poll.targetGame,
+    gameName: poll.gameName
+  });
+
+  const resultMsg = {
+    id: `sys-poll-res-${Date.now()}`,
+    sender: { name: '📊 Lounge Game Poll', color: passed ? '#10b981' : '#ef4444', avatar: passed ? '✅' : '❌' },
+    text: passed
+      ? `Vote Passed (${poll.yesCount} Yes vs ${poll.noCount} No)! Switching to ${poll.gameName} in 5s...`
+      : `Vote Rejected (${poll.yesCount} Yes vs ${poll.noCount} No). Keeping current game.`,
+    timestamp: Date.now(),
+    isSystem: true
+  };
+
+  room.messages.push(resultMsg);
+  io.to(roomId).emit('new_message', resultMsg);
+
+  if (passed) {
+    setTimeout(() => {
+      startCountdownAndLaunch(roomId, poll.targetGame);
+    }, 1200);
+  }
+
+  room.activePoll = null;
+}
+
 function launchGame(roomId, gameType) {
   const room = rooms.get(roomId);
   if (!room) return;
@@ -975,7 +1017,23 @@ io.on('connection', (socket) => {
   let currentRoomId = null;
   let currentUser = null;
 
-  socket.emit('rooms_update', Array.from(rooms.values()).map(formatRoomForLobby));
+  // In-memory per-socket rate limiting (zero DB, RAM-only)
+  const messageTimestamps = [];
+  const roomCreationTimestamps = [];
+
+  const isRateLimited = (timestamps, maxCount, windowMs) => {
+    const now = Date.now();
+    while (timestamps.length > 0 && timestamps[0] <= now - windowMs) {
+      timestamps.shift();
+    }
+    if (timestamps.length >= maxCount) {
+      return true;
+    }
+    timestamps.push(now);
+    return false;
+  };
+
+  socket.emit('rooms_update', getLobbyRooms());
   socket.emit('pins_update', Array.from(pins.values()));
 
   // Pins Event Handlers
@@ -986,6 +1044,26 @@ io.on('connection', (socket) => {
   socket.on('create_pin', (pinData, callback) => {
     if (!pinData || !pinData.type || !pinData.title) {
       if (typeof callback === 'function') callback({ success: false, error: 'Invalid pin payload' });
+      return;
+    }
+
+    // Strict Campus Geofence Validation: strictly reject pins outside campus
+    const pinLat = Number(pinData.lat);
+    const pinLng = Number(pinData.lng);
+    if (
+      isNaN(pinLat) ||
+      isNaN(pinLng) ||
+      pinLat < 23.1670 ||
+      pinLat > 23.1835 ||
+      pinLng < 80.0135 ||
+      pinLng > 80.0355
+    ) {
+      if (typeof callback === 'function') {
+        callback({
+          success: false,
+          error: 'Strict Campus Rule: Events, lounges, and pins can only be created within PDPM IIITDMJ campus grounds.'
+        });
+      }
       return;
     }
 
@@ -1082,8 +1160,8 @@ io.on('connection', (socket) => {
     const newPin = {
       id: pinId,
       type: pinData.type,
-      lat: Number(pinData.lat) || 23.1750,
-      lng: Number(pinData.lng) || 80.0292,
+      lat: pinLat,
+      lng: pinLng,
       title: pinData.title,
       createdBy: pinData.createdBy || { name: 'Anonymous Student', avatar: '🎓', color: '#8b5cf6' },
       createdAt: Date.now(),
@@ -1114,7 +1192,7 @@ io.on('connection', (socket) => {
     pins.set(pinId, newPin);
 
     io.emit('pins_update', Array.from(pins.values()));
-    io.emit('rooms_update', Array.from(rooms.values()).map(formatRoomForLobby));
+    io.emit('rooms_update', getLobbyRooms());
 
     if (typeof callback === 'function') {
       callback({ success: true, pin: newPin, roomId: linkedRoomId });
@@ -1197,9 +1275,30 @@ io.on('connection', (socket) => {
 
   // Create Room
   socket.on('create_room', (roomData, callback) => {
+    if (isRateLimited(roomCreationTimestamps, 6, 60000)) {
+      if (typeof callback === 'function') {
+        callback({ success: false, error: 'Rate limit exceeded: Max 6 rooms per minute. Please wait.' });
+      }
+      return;
+    }
     const roomCode = (roomData?.code || Math.random().toString(36).substring(2, 8)).toUpperCase();
     const roomId = `lounge-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const selectedGame = roomData?.selectedGame || 'scribble';
+
+    const isProximity = !!roomData.isProximity;
+    const isPrivate = !!roomData.isPrivate;
+    const radius = Number(roomData.radius) || 100;
+    
+    // Validate GPS coordinate bounds (-90 to 90 lat, -180 to 180 lon)
+    const hasValidCoords = roomData.coords &&
+      typeof roomData.coords.lat === 'number' &&
+      typeof roomData.coords.lon === 'number' &&
+      roomData.coords.lat >= -90 && roomData.coords.lat <= 90 &&
+      roomData.coords.lon >= -180 && roomData.coords.lon <= 180;
+
+    const anchorCoords = (isProximity && hasValidCoords)
+      ? { lat: Number(roomData.coords.lat), lon: Number(roomData.coords.lon) }
+      : null;
 
     const newRoom = {
       id: roomId,
@@ -1211,6 +1310,10 @@ io.on('connection', (socket) => {
       tags: roomData.tags || ['Ephemeral', 'Vent'],
       created: Date.now(),
       isPermanent: false,
+      isProximity,
+      isPrivate,
+      radius,
+      anchorCoords, // Kept strictly private in server memory!
       users: new Map(),
       canvasStrokes: [],
       messages: [],
@@ -1236,37 +1339,147 @@ io.on('connection', (socket) => {
     };
 
     rooms.set(roomId, newRoom);
-    io.emit('rooms_update', Array.from(rooms.values()).map(formatRoomForLobby));
+    io.emit('rooms_update', getLobbyRooms());
 
     if (typeof callback === 'function') {
       callback({ success: true, roomId, code: roomCode });
     }
   });
 
+  // Query Nearby Rooms (Zero-Knowledge: returns distance bucket, never coordinates)
+  socket.on('get_nearby_rooms', (data, callback) => {
+    const coords = data?.coords;
+    if (!coords || typeof coords.lat !== 'number' || typeof coords.lon !== 'number') {
+      if (typeof callback === 'function') callback({ success: false, error: 'GPS coordinates required', nearbyMap: {} });
+      return;
+    }
+
+    const nearbyMap = {};
+    rooms.forEach((room) => {
+      if (room.isProximity && room.anchorCoords) {
+        const distance = getHaversineDistance(coords.lat, coords.lon, room.anchorCoords.lat, room.anchorCoords.lon);
+        const isNearby = distance <= (room.radius || 100) + 15; // 15m GPS jitter tolerance
+        nearbyMap[room.id] = {
+          isNearby,
+          distanceBucket: formatDistanceBucket(distance),
+          distanceMeters: distance
+        };
+      }
+    });
+
+    if (typeof callback === 'function') {
+      callback({ success: true, nearbyMap });
+    }
+  });
+
   // Join Room by Code
-  socket.on('join_room_by_code', ({ code }, callback) => {
-    const searchCode = (code || '').trim().toUpperCase();
-    const targetRoom = Array.from(rooms.values()).find(
-      r => r.code && r.code.toUpperCase() === searchCode
+  socket.on('join_room_by_code', (data, callback) => {
+    const rawCode = (typeof data === 'string' ? data : (data?.code || '')).trim().toUpperCase();
+    if (!rawCode) {
+      if (typeof callback === 'function') callback({ success: false, error: 'Room code is required' });
+      return;
+    }
+
+    let targetRoom = Array.from(rooms.values()).find(
+      r => r.code && r.code.toUpperCase() === rawCode
     );
 
-    if (targetRoom) {
-      if (typeof callback === 'function') {
-        callback({ success: true, roomId: targetRoom.id });
+    if (!targetRoom) {
+      // Create ephemeral room for custom code so multiple peers enter the same room
+      const newRoomId = `lounge-${rawCode.toLowerCase()}`;
+      targetRoom = {
+        id: newRoomId,
+        code: rawCode,
+        name: `Private Lounge #${rawCode}`,
+        category: 'General',
+        selectedGame: 'scribble',
+        description: `Private room joined with code #${rawCode}`,
+        tags: ['Private', 'Code-Room'],
+        created: Date.now(),
+        isPermanent: false,
+        isProximity: false,
+        users: new Map(),
+        canvasStrokes: [],
+        messages: [],
+        game: {
+          type: 'scribble',
+          isActive: false,
+          scores: {},
+          timerInterval: null,
+          timeLeft: 30,
+          currentDrawer: null,
+          currentWord: '',
+          revealedWord: '',
+          hasGuessed: new Set(),
+          triviaQuestion: null,
+          triviaAnswers: new Map(),
+          currentLetter: 'C',
+          lastWord: 'Campus',
+          wordHistory: ['Campus'],
+          streakCount: 1,
+          currentPrompt: null,
+          emojiTargets: []
+        }
+      };
+      rooms.set(newRoomId, targetRoom);
+      io.emit('rooms_update', getLobbyRooms());
+    }
+
+    // Validate proximity if room is proximity-locked
+    if (targetRoom.isProximity && targetRoom.anchorCoords) {
+      const clientCoords = data?.coords;
+      if (!clientCoords || typeof clientCoords.lat !== 'number' || typeof clientCoords.lon !== 'number') {
+        if (typeof callback === 'function') {
+          callback({
+            success: false,
+            error: 'This lounge is locked to ~100m campus proximity. Please enable GPS or select a Campus Preset.'
+          });
+        }
+        return;
       }
-    } else {
-      if (typeof callback === 'function') {
-        callback({ success: false });
+
+      const distance = getHaversineDistance(clientCoords.lat, clientCoords.lon, targetRoom.anchorCoords.lat, targetRoom.anchorCoords.lon);
+      if (distance > (targetRoom.radius || 100) + 15) {
+        if (typeof callback === 'function') {
+          callback({
+            success: false,
+            error: `Outside room's ${targetRoom.radius || 100}m proximity zone (${formatDistanceBucket(distance)}).`
+          });
+        }
+        return;
       }
+    }
+
+    if (typeof callback === 'function') {
+      callback({ success: true, roomId: targetRoom.id });
     }
   });
 
   // Join Room
-  socket.on('join_room', ({ roomId, user }) => {
+  socket.on('join_room', ({ roomId, user, coords }, callback) => {
     let room = rooms.get(roomId);
     if (!room) {
+      if (typeof callback === 'function') callback({ success: false, error: 'Room does not exist or has expired.' });
       socket.emit('error_message', 'Room does not exist or has expired.');
       return;
+    }
+
+    // Server-Side Proximity Guard
+    if (room.isProximity && room.anchorCoords) {
+      if (!coords || typeof coords.lat !== 'number' || typeof coords.lon !== 'number') {
+        const errMsg = 'This lounge is locked to ~100m proximity. Please allow GPS or select a Campus Preset.';
+        if (typeof callback === 'function') callback({ success: false, error: errMsg });
+        socket.emit('error_message', errMsg);
+        return;
+      }
+
+      const distance = getHaversineDistance(coords.lat, coords.lon, room.anchorCoords.lat, room.anchorCoords.lon);
+      if (distance > (room.radius || 100) + 15) {
+        const errMsg = `Outside room's ${room.radius || 100}m proximity zone (${formatDistanceBucket(distance)}).`;
+        if (typeof callback === 'function') callback({ success: false, error: errMsg });
+        socket.emit('error_message', errMsg);
+        return;
+      }
     }
 
     if (currentRoomId && currentRoomId !== roomId) {
@@ -1285,6 +1498,7 @@ io.on('connection', (socket) => {
     currentRoomId = roomId;
     currentUser = {
       ...user,
+      isSpectator: !!user?.isSpectator,
       socketId: socket.id,
       joinedAt: Date.now()
     };
@@ -1299,7 +1513,9 @@ io.on('connection', (socket) => {
         category: room.category,
         selectedGame: room.game.type,
         description: room.description,
-        tags: room.tags
+        tags: room.tags,
+        isProximity: !!room.isProximity,
+        radius: room.radius || 100
       },
       activeUsers: Array.from(room.users.values()),
       canvasStrokes: room.canvasStrokes,
@@ -1339,14 +1555,14 @@ io.on('connection', (socket) => {
     room.messages.push(welcomeMsg);
     io.to(roomId).emit('new_message', welcomeMsg);
 
-    io.emit('rooms_update', Array.from(rooms.values()).map(formatRoomForLobby));
+    io.emit('rooms_update', getLobbyRooms());
   });
 
   // Canvas
   socket.on('draw_stroke', (strokeData) => {
     if (!currentRoomId) return;
     const room = rooms.get(currentRoomId);
-    if (!room) return;
+    if (!room || !room.users.has(socket.id)) return;
 
     if (room.game.isActive && room.game.type === 'scribble') {
       if (room.game.currentDrawer?.id !== currentUser?.id) return;
@@ -1360,7 +1576,7 @@ io.on('connection', (socket) => {
   socket.on('clear_canvas', () => {
     if (!currentRoomId) return;
     const room = rooms.get(currentRoomId);
-    if (!room) return;
+    if (!room || !room.users.has(socket.id)) return;
     room.canvasStrokes = [];
     io.to(currentRoomId).emit('canvas_cleared', { by: currentUser?.name || 'Someone' });
   });
@@ -1369,7 +1585,12 @@ io.on('connection', (socket) => {
   socket.on('send_message', (msgPayload) => {
     if (!currentRoomId) return;
     const room = rooms.get(currentRoomId);
-    if (!room) return;
+    if (!room || !room.users.has(socket.id)) return;
+
+    if (isRateLimited(messageTimestamps, 8, 2000)) {
+      socket.emit('error_message', 'Rate limit exceeded: You are chatting too quickly. Please slow down.');
+      return;
+    }
 
     const messageText = (msgPayload.text || '').trim();
     if (!messageText) return;
@@ -1459,7 +1680,7 @@ io.on('connection', (socket) => {
   socket.on('submit_trivia_answer', ({ answerIndex }) => {
     if (!currentRoomId || !currentUser) return;
     const room = rooms.get(currentRoomId);
-    if (!room || !room.game.isActive || room.game.type !== 'trivia') return;
+    if (!room || !room.users.has(socket.id) || !room.game.isActive || room.game.type !== 'trivia') return;
 
     room.game.triviaAnswers.set(currentUser.id, answerIndex);
     socket.emit('trivia_answer_acknowledged', { answerIndex });
@@ -1469,7 +1690,7 @@ io.on('connection', (socket) => {
   socket.on('pop_emoji_target', ({ targetId, points }) => {
     if (!currentRoomId || !currentUser) return;
     const room = rooms.get(currentRoomId);
-    if (!room || !room.game.isActive || room.game.type !== 'emojipop') return;
+    if (!room || !room.users.has(socket.id) || !room.game.isActive || room.game.type !== 'emojipop') return;
 
     // Filter out popped target
     room.game.emojiTargets = (room.game.emojiTargets || []).filter(t => t.id !== targetId);
@@ -1482,33 +1703,131 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Switch or Toggle Game
-  socket.on('switch_game', ({ gameType }) => {
+  // Propose Game Switch (Initiates in-chat voting poll if multiple players, or starts with 5s cooldown if solo)
+  socket.on('propose_game_switch', ({ targetGame }) => {
     if (!currentRoomId) return;
-    launchGame(currentRoomId, gameType);
+    const room = rooms.get(currentRoomId);
+    if (!room || !room.users.has(socket.id)) return;
+    if (!['scribble', 'trivia', 'wordchain', 'emojipop', 'truthvent'].includes(targetGame)) return;
+
+    if (room.game.type === targetGame && (room.game.isActive || room.game.isCountdown)) {
+      return;
+    }
+
+    // If 1 or fewer players in room, switch directly with 5s countdown cooldown
+    if (room.users.size <= 1) {
+      startCountdownAndLaunch(currentRoomId, targetGame);
+      return;
+    }
+
+    // If poll already active
+    if (room.activePoll && Date.now() < room.activePoll.expiresAt) {
+      socket.emit('error_message', 'A game vote poll is already running in chat!');
+      return;
+    }
+
+    const pollId = `poll-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const pollData = {
+      id: pollId,
+      targetGame,
+      gameName: getGameDisplayName(targetGame),
+      proposer: currentUser?.name || 'A player',
+      yesVotes: [socket.id],
+      noVotes: [],
+      yesCount: 1,
+      noCount: 0,
+      totalUsers: room.users.size,
+      expiresAt: Date.now() + 10000,
+      isResolved: false
+    };
+
+    room.activePoll = {
+      ...pollData,
+      timer: setTimeout(() => {
+        resolvePoll(currentRoomId, pollId);
+      }, 10000)
+    };
+
+    const pollMsg = {
+      id: pollId,
+      sender: { name: '📊 Lounge Game Poll', color: '#8b5cf6', avatar: '🗳️' },
+      text: `${currentUser?.name || 'A player'} proposed switching to ${getGameDisplayName(targetGame)}. Vote below:`,
+      timestamp: Date.now(),
+      isSystem: true,
+      isPoll: true,
+      poll: pollData
+    };
+
+    room.messages.push(pollMsg);
+    io.to(currentRoomId).emit('new_message', pollMsg);
   });
 
+  // Vote on In-Chat Game Switch Poll
+  socket.on('vote_game_poll', ({ pollId, vote }) => {
+    if (!currentRoomId) return;
+    const room = rooms.get(currentRoomId);
+    if (!room || !room.activePoll || room.activePoll.id !== pollId || room.activePoll.isResolved) return;
+
+    const poll = room.activePoll;
+    poll.yesVotes = poll.yesVotes.filter(id => id !== socket.id);
+    poll.noVotes = poll.noVotes.filter(id => id !== socket.id);
+
+    if (vote === 'yes') {
+      poll.yesVotes.push(socket.id);
+    } else if (vote === 'no') {
+      poll.noVotes.push(socket.id);
+    }
+
+    poll.yesCount = poll.yesVotes.length;
+    poll.noCount = poll.noVotes.length;
+
+    io.to(currentRoomId).emit('poll_updated', {
+      pollId,
+      yesCount: poll.yesCount,
+      noCount: poll.noCount,
+      totalUsers: room.users.size
+    });
+
+    if (poll.yesCount > room.users.size / 2) {
+      clearTimeout(poll.timer);
+      resolvePoll(currentRoomId, pollId);
+    }
+  });
+
+  // Toggle Game (Start with 5s countdown cooldown or stop)
   socket.on('toggle_game', () => {
     if (!currentRoomId) return;
     const room = rooms.get(currentRoomId);
-    if (!room) return;
+    if (!room || !room.users.has(socket.id)) return;
 
-    if (room.game.isActive) {
+    if (room.game.isActive || room.game.isCountdown) {
       room.game.isActive = false;
+      room.game.isCountdown = false;
       clearRoomTimer(room);
       io.to(currentRoomId).emit('game_stopped');
     } else {
-      launchGame(currentRoomId, room.game.type || 'scribble');
+      startCountdownAndLaunch(currentRoomId, room.game.type || 'scribble');
     }
+  });
+
+  socket.on('switch_game', ({ gameType }) => {
+    if (!currentRoomId) return;
+    const room = rooms.get(currentRoomId);
+    if (!room || !room.users.has(socket.id)) return;
+    startCountdownAndLaunch(currentRoomId, gameType);
   });
 
   socket.on('next_truth_vent_prompt', () => {
     if (!currentRoomId) return;
+    const room = rooms.get(currentRoomId);
+    if (!room || !room.users.has(socket.id)) return;
     startTruthVentGame(currentRoomId);
   });
 
   socket.on('typing_status', ({ isTyping }) => {
     if (!currentRoomId || !currentUser) return;
+    const room = rooms.get(currentRoomId);
+    if (!room || !room.users.has(socket.id)) return;
     socket.to(currentRoomId).emit('user_typing_update', {
       userId: currentUser.id,
       userName: currentUser.name,
@@ -1518,12 +1837,28 @@ io.on('connection', (socket) => {
 
   socket.on('send_reaction', ({ emoji }) => {
     if (!currentRoomId || !currentUser) return;
+    const room = rooms.get(currentRoomId);
+    if (!room || !room.users.has(socket.id)) return;
     io.to(currentRoomId).emit('reaction_burst', {
       emoji,
       userId: currentUser.id,
       userName: currentUser.name,
       id: Math.random()
     });
+  });
+
+  // Phase 10: Spectator Mode Toggle
+  socket.on('toggle_spectator', ({ isSpectator }) => {
+    if (!currentRoomId || !currentUser) return;
+    const room = rooms.get(currentRoomId);
+    if (!room || !room.users.has(socket.id)) return;
+    const u = room.users.get(socket.id);
+    if (u) {
+      u.isSpectator = !!isSpectator;
+      io.to(currentRoomId).emit('active_users_update', {
+        activeUsers: Array.from(room.users.values())
+      });
+    }
   });
 
   const handleLeave = () => {
@@ -1537,29 +1872,244 @@ io.on('connection', (socket) => {
           activeUsers: Array.from(room.users.values())
         });
 
-        if (room.game.isActive && room.game.type === 'scribble' && room.game.currentDrawer?.id === currentUser?.id) {
+        if (room.game?.isActive && room.game?.type === 'scribble' && room.game?.currentDrawer?.id === currentUser?.id) {
           endScribbleRound(currentRoomId, 'The drawer stepped out.');
         }
 
-        if (!room.isPermanent && room.users.size === 0) {
+        // Instant disintegration the second all players leave the room!
+        if (room.users.size === 0) {
           clearRoomTimer(room);
-          setTimeout(() => {
-            const checkRoom = rooms.get(currentRoomId);
-            if (checkRoom && checkRoom.users.size === 0 && !checkRoom.isPermanent) {
-              rooms.delete(currentRoomId);
-              io.emit('rooms_update', Array.from(rooms.values()).map(formatRoomForLobby));
-            }
-          }, 60000);
+          if (room.activePoll?.timer) clearTimeout(room.activePoll.timer);
+          room.messages = [];
+          room.canvasStrokes = [];
+          room.anchorCoords = null;
+          room.game = null;
+          rooms.delete(currentRoomId);
+          io.emit('rooms_update', getLobbyRooms());
         }
       }
 
-      io.emit('rooms_update', Array.from(rooms.values()).map(formatRoomForLobby));
+      io.emit('rooms_update', getLobbyRooms());
       currentRoomId = null;
+      proximityCandidates.delete(socket.id);
     }
   };
 
+  // In-session Periodic Proximity Verification Ping
+  socket.on('verify_proximity_ping', (data, callback) => {
+    const roomId = data?.roomId || currentRoomId;
+    const room = rooms.get(roomId);
+    if (!room || !room.isProximity || !room.anchorCoords) {
+      if (typeof callback === 'function') callback({ inRange: true });
+      return;
+    }
+
+    const coords = data?.coords;
+    if (!coords || typeof coords.lat !== 'number' || typeof coords.lon !== 'number') {
+      if (typeof callback === 'function') callback({ inRange: false, reason: 'No GPS data' });
+      return;
+    }
+
+    const distance = getHaversineDistance(coords.lat, coords.lon, room.anchorCoords.lat, room.anchorCoords.lon);
+    const inRange = distance <= (room.radius || 100) + 20;
+
+    if (!inRange) {
+      socket.emit('proximity_drift_warning', {
+        message: `You have drifted outside the ~${room.radius || 100}m proximity zone (${formatDistanceBucket(distance)}).`,
+        distanceBucket: formatDistanceBucket(distance)
+      });
+    }
+
+    if (typeof callback === 'function') {
+      callback({ inRange, distanceBucket: formatDistanceBucket(distance) });
+    }
+  });
+
+  // Phase 4: Proximity Radar & Matchmaking Events
+  socket.on('start_radar', (data, callback) => {
+    const coords = data?.coords;
+    if (!coords || typeof coords.lat !== 'number' || typeof coords.lon !== 'number') {
+      if (typeof callback === 'function') callback({ success: false, error: 'GPS coordinates required for radar' });
+      return;
+    }
+
+    proximityCandidates.set(socket.id, {
+      socketId: socket.id,
+      user: data?.user || currentUser || { name: 'Anonymous', avatar: '👻' },
+      coords: { lat: coords.lat, lon: coords.lon },
+      preferredGames: Array.isArray(data?.preferredGames) && data.preferredGames.length > 0
+        ? data.preferredGames
+        : ['scribble', 'trivia', 'wordchain', 'emojipop', 'truthvent'],
+      joinedAt: Date.now(),
+      lastAlertAt: 0
+    });
+
+    if (typeof callback === 'function') {
+      callback({ success: true, activeCandidatesCount: proximityCandidates.size });
+    }
+  });
+
+  socket.on('update_radar_location', (data) => {
+    const candidate = proximityCandidates.get(socket.id);
+    if (candidate && data?.coords && typeof data.coords.lat === 'number' && typeof data.coords.lon === 'number') {
+      candidate.coords = { lat: data.coords.lat, lon: data.coords.lon };
+    }
+  });
+
+  socket.on('stop_radar', () => {
+    proximityCandidates.delete(socket.id);
+  });
+
+  socket.on('accept_nearby_match', ({ matchId, user, coords }, callback) => {
+    const match = pendingMatches.get(matchId);
+    if (!match) {
+      if (typeof callback === 'function') callback({ success: false, error: 'Match has expired or is no longer available.' });
+      return;
+    }
+
+    // Lazily spin up proximity room for this match if not created yet
+    if (!match.roomId) {
+      const newRoomId = `lounge-match-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const newRoom = {
+        id: newRoomId,
+        code: roomCode,
+        name: `Nearby ${match.gameName} Lounge 📍`,
+        category: 'Mini-Game',
+        selectedGame: match.game,
+        description: `Ephemeral room formed by ~100m proximity radar matching.`,
+        tags: ['Proximity', '100m-Zone', match.gameName],
+        created: Date.now(),
+        isPermanent: false,
+        isProximity: true,
+        radius: 100,
+        anchorCoords: match.anchorCoords, // Private in server RAM
+        users: new Map(),
+        canvasStrokes: [],
+        messages: [],
+        game: {
+          type: match.game,
+          isActive: false,
+          scores: {},
+          timerInterval: null,
+          timeLeft: 30,
+          currentDrawer: null,
+          currentWord: '',
+          revealedWord: '',
+          hasGuessed: new Set(),
+          triviaQuestion: null,
+          triviaAnswers: new Map(),
+          currentLetter: 'C',
+          lastWord: 'Campus',
+          wordHistory: ['Campus'],
+          streakCount: 1,
+          currentPrompt: null,
+          emojiTargets: []
+        }
+      };
+      rooms.set(newRoomId, newRoom);
+      match.roomId = newRoomId;
+      io.emit('rooms_update', getLobbyRooms());
+    }
+
+    proximityCandidates.delete(socket.id);
+
+    if (typeof callback === 'function') {
+      callback({ success: true, roomId: match.roomId });
+    }
+  });
+
   socket.on('leave_room', handleLeave);
   socket.on('disconnect', handleLeave);
+});
+
+// Proximity Matchmaking Scanner: clusters nearby candidates within 100m
+function scanProximityCandidates() {
+  if (proximityCandidates.size < 2) return;
+  const now = Date.now();
+  const candidateList = Array.from(proximityCandidates.values());
+
+  // Prune inactive candidates older than 5 minutes
+  for (const c of candidateList) {
+    if (now - c.joinedAt > 300000) {
+      proximityCandidates.delete(c.socketId);
+    }
+  }
+
+  for (let i = 0; i < candidateList.length; i++) {
+    const leader = candidateList[i];
+    if (now - leader.lastAlertAt < 35000) continue; // 35s cooldown per candidate
+
+    const cluster = [leader];
+    for (let j = 0; j < candidateList.length; j++) {
+      if (i === j) continue;
+      const peer = candidateList[j];
+      if (now - peer.lastAlertAt < 35000) continue;
+
+      const dist = getHaversineDistance(leader.coords.lat, leader.coords.lon, peer.coords.lat, peer.coords.lon);
+      if (dist <= 100) {
+        const commonGame = leader.preferredGames.find(g => peer.preferredGames.includes(g));
+        if (commonGame) {
+          cluster.push(peer);
+          if (cluster.length >= 6) break; // Match up to 6 players
+        }
+      }
+    }
+
+    if (cluster.length >= 2) {
+      // Tally games
+      const gameCounts = {};
+      cluster.forEach(c => {
+        c.preferredGames.forEach(g => {
+          gameCounts[g] = (gameCounts[g] || 0) + 1;
+        });
+      });
+      const chosenGame = Object.entries(gameCounts).sort((a, b) => b[1] - a[1])[0][0] || 'scribble';
+      const matchId = `match-${now}-${Math.random().toString(36).slice(2, 6)}`;
+
+      pendingMatches.set(matchId, {
+        matchId,
+        game: chosenGame,
+        gameName: getGameDisplayName(chosenGame),
+        members: new Set(cluster.map(c => c.socketId)),
+        anchorCoords: { lat: leader.coords.lat, lon: leader.coords.lon },
+        createdAt: now,
+        roomId: null
+      });
+
+      cluster.forEach(c => {
+        c.lastAlertAt = now;
+        io.to(c.socketId).emit('game_nearby_alert', {
+          matchId,
+          game: chosenGame,
+          gameName: getGameDisplayName(chosenGame),
+          playerCount: cluster.length,
+          expiresIn: 20
+        });
+      });
+    }
+  }
+}
+
+setInterval(scanProximityCandidates, 3500);
+
+// Cleanup expired matches every 10s
+setInterval(() => {
+  const now = Date.now();
+  for (const [matchId, match] of pendingMatches.entries()) {
+    if (now - match.createdAt > 30000) {
+      pendingMatches.delete(matchId);
+    }
+  }
+}, 10000);
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'TheBackrooms Socket.io Backend',
+    activeRooms: rooms.size,
+    timestamp: new Date().toISOString()
+  });
 });
 
 const clientDist = path.join(__dirname, '../client/dist');

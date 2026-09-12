@@ -4,8 +4,6 @@ cyhi-logs/.local/
 node_modules/
 client/node_modules/
 server/node_modules/
-dist/
-client/dist/
 .vite/
 client/.vite/
 .env
