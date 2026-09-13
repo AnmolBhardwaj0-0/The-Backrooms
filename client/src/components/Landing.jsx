@@ -100,10 +100,11 @@ export default function Landing({
 
   const handleJoinCodeSubmit = (e) => {
     e.preventDefault();
-    if (!inputCode.trim()) return;
-    sounds.playSuccess();
+    const clean = inputCode.trim().replace(/^#/, '');
+    if (!clean) return;
+    sounds.playPop();
     if (typeof onJoinByCode === 'function') {
-      onJoinByCode(inputCode.trim());
+      onJoinByCode(clean);
     }
   };
 

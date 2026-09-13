@@ -647,4 +647,49 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+/* Subtle Idle Expiry Progress Bar on Room Cards */
+.room-idle-bar-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  z-index: 2;
+}
+
+.room-idle-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981 0%, #8b5cf6 100%);
+  transition: width 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.45);
+}
+
+[data-theme='light'] .room-idle-bar-track {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.room-countdown-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: rgba(139, 92, 246, 0.12);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  letter-spacing: 0.02em;
+}
+
+[data-theme='light'] .room-countdown-pill {
+  background: rgba(139, 92, 246, 0.1);
+  color: #7c3aed;
+  border-color: rgba(139, 92, 246, 0.2);
+}
+
 

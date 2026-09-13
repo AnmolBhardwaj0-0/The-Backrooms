@@ -98,6 +98,17 @@ export default function RoomView({
   const chatScrollContainerRef = useRef(null);
   const isUserScrolledUpRef = useRef(false);
   const typingTimeoutRef = useRef(null);
+  const lastHeartbeatRef = useRef(0);
+
+  const emitActivityHeartbeat = () => {
+    const now = Date.now();
+    if (now - lastHeartbeatRef.current > 3000) {
+      lastHeartbeatRef.current = now;
+      if (socket) {
+        socket.emit('room:activity', { roomId });
+      }
+    }
+  };
 
   const handleChatScroll = () => {
     const el = chatScrollContainerRef.current;
@@ -118,7 +129,8 @@ export default function RoomView({
 
   // Copy Room Code
   const handleCopyRoomCode = () => {
-    const code = roomData.code || roomId.replace('lounge-', '').slice(0, 6).toUpperCase();
+    const code = roomData.code || (roomId ? roomId.replace(/^lounge-/, '').slice(0, 6).toUpperCase() : '');
+    if (!code) return;
     try {
       navigator.clipboard.writeText(code);
       sounds.playPop();
@@ -291,6 +303,16 @@ export default function RoomView({
       setCurrentPoll(poll);
     });
 
+    socket.on('room_expired', ({ roomId: expId, message }) => {
+      if (expId === roomId) {
+        if (window.peer && typeof window.peer.destroy === 'function') {
+          try { window.peer.destroy(); } catch (e) {}
+        }
+        alert(message || 'This room has expired due to inactivity.');
+        onLeaveRoom();
+      }
+    });
+
     return () => {
       socket.off('room_joined_data');
       socket.off('user_joined');
@@ -312,6 +334,7 @@ export default function RoomView({
       socket.off('emoji_targets_respawn');
       socket.off('emoji_target_popped');
       socket.off('poll_updated');
+      socket.off('room_expired');
       socket.emit('leave_room', { roomId });
     };
   }, [socket, roomId, userProfile]);
@@ -332,6 +355,7 @@ export default function RoomView({
   const handleSendReaction = (emoji) => {
     if (!socket) return;
     socket.emit('send_reaction', { emoji });
+    emitActivityHeartbeat();
   };
 
   // Canvas Setup
@@ -450,6 +474,7 @@ export default function RoomView({
     drawSegment(ctx, stroke.x1, stroke.y1, stroke.x2, stroke.y2, stroke.color, stroke.width, stroke.isEraser, stroke.timestamp);
     strokeHistoryRef.current.push(stroke);
     if (socket) socket.emit('draw_stroke', stroke);
+    emitActivityHeartbeat();
 
     lastPointRef.current = coords;
   };
@@ -479,6 +504,7 @@ export default function RoomView({
     if (!text || !socket) return;
 
     socket.emit('send_message', { roomId, text, isEphemeral });
+    emitActivityHeartbeat();
     sounds.playSend();
     setInputText('');
     socket.emit('typing_status', { isTyping: false });
@@ -515,18 +541,21 @@ export default function RoomView({
     if (!socket || gameState.selectedAnswerIdx !== null) return;
     sounds.playBoing();
     socket.emit('submit_trivia_answer', { answerIndex: index });
+    emitActivityHeartbeat();
   };
 
   const handlePopTarget = (target) => {
     if (!socket) return;
     sounds.playPop();
     socket.emit('pop_emoji_target', { targetId: target.id, points: target.points });
+    emitActivityHeartbeat();
   };
 
   const handleNextTruthVent = () => {
     if (socket) {
       sounds.playBoing();
       socket.emit('next_truth_vent_prompt', {});
+      emitActivityHeartbeat();
     }
   };
 
@@ -534,6 +563,7 @@ export default function RoomView({
     if (!socket || !gameState.prompt) return;
     const promptText = `🎭 [${(gameState.prompt.type || 'Vent').toUpperCase()}] ${gameState.prompt.text || ''}`;
     socket.emit('send_message', { roomId, text: promptText, isEphemeral: false });
+    emitActivityHeartbeat();
     sounds.playSend();
   };
 
@@ -544,6 +574,7 @@ export default function RoomView({
 
     sounds.playPop();
     socket.emit('wordchain_submit_word', { word });
+    emitActivityHeartbeat();
     setGameState(prev => ({ ...prev, wordChainInput: '' }));
   };
 
@@ -578,6 +609,7 @@ export default function RoomView({
       optionId,
       voterId: userProfile?.id || userProfile?.name
     });
+    emitActivityHeartbeat();
   };
 
   const handleClosePoll = () => {
@@ -589,7 +621,7 @@ export default function RoomView({
     });
   };
 
-  const displayRoomCode = roomData.code || roomId.replace('lounge-', '').slice(0, 6).toUpperCase();
+  const displayRoomCode = roomData.code || (roomId ? roomId.replace(/^lounge-/, '').slice(0, 6).toUpperCase() : '');
 
   return (
     <div className="room-view-container">

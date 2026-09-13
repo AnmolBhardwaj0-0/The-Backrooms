@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import './Lobby.css';
 import { sounds } from '../utils/sound';
@@ -6,6 +6,9 @@ import Reveal from './Reveal';
 import CampusMap from './CampusMap';
 import LostFoundModal from './LostFoundModal';
 import TradeModal from './TradeModal';
+import LostFoundBoardModal from './LostFoundBoardModal';
+import TradeBoardModal from './TradeBoardModal';
+import { calculateHaversineDistance, getUserLocation } from '../utils/geo';
 
 const CATEGORIES = ['All', 'General', 'Study', 'Rant', 'Art', 'Mini-Game'];
 
@@ -42,6 +45,55 @@ export default function Lobby({
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [copiedCode, setCopiedCode] = useState(null);
 
+  // Geolocation state (100m campus radius)
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationStatus, setLocationStatus] = useState('prompt'); // 'prompt' | 'requesting' | 'granted' | 'denied' | 'unavailable'
+  const [locationError, setLocationError] = useState(null);
+  const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
+
+  // Ticking time for idle expiry progress bars
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Request & periodic refresh of user geolocation (every 30s)
+  const refreshUserLocation = async (isManual = false) => {
+    if (isManual) setIsRefreshingLocation(true);
+    try {
+      const loc = await getUserLocation();
+      setUserLocation(loc);
+      setPinCoords(prev => ({ lat: loc.lat, lng: loc.lng }));
+      setLocationStatus('granted');
+      setLocationError(null);
+    } catch (err) {
+      console.warn('Geolocation status:', err?.message || err);
+      if (err?.code === 1) {
+        setLocationStatus('denied');
+      } else {
+        setLocationStatus('unavailable');
+      }
+      setLocationError(err?.message || 'Location unavailable');
+    } finally {
+      if (isManual) {
+        setTimeout(() => setIsRefreshingLocation(false), 500);
+      }
+    }
+  };
+
+  useEffect(() => {
+    refreshUserLocation();
+    const intervalId = setInterval(() => {
+      refreshUserLocation();
+    }, 30000);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  // Persistent InsForge Boards
+  const [isLostFoundBoardOpen, setIsLostFoundBoardOpen] = useState(false);
+  const [isTradeBoardOpen, setIsTradeBoardOpen] = useState(false);
+
   // Pin placement & creation state
   const [isPlacingPin, setIsPlacingPin] = useState(false);
   const [pinCoords, setPinCoords] = useState({ lat: 23.17504, lng: 80.02921 });
@@ -69,6 +121,7 @@ export default function Lobby({
   const [newRoomGame, setNewRoomGame] = useState('scribble');
   const [newRoomDesc, setNewRoomDesc] = useState('');
   const [newRoomTags, setNewRoomTags] = useState('');
+  const [newRoomTimeout, setNewRoomTimeout] = useState('unlimited'); // 'unlimited' | 15 | 30
 
   // Marketplace fields
   const [mktPrice, setMktPrice] = useState('$15');
@@ -81,15 +134,36 @@ export default function Lobby({
   const [lfDateLoc, setLfDateLoc] = useState('');
   const [lfPhotoUrl, setLfPhotoUrl] = useState('');
 
-  const filteredRooms = rooms.filter(room => {
-    const matchesCat = selectedCategory === 'All' || room.category === selectedCategory;
-    const matchesSearch =
-      room.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      room.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (room.code && room.code.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (room.tags && room.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase())));
-    return matchesCat && matchesSearch;
-  });
+  const filteredRooms = useMemo(() => {
+    return rooms.filter(room => {
+      const matchesCat = selectedCategory === 'All' || room.category === selectedCategory;
+      const matchesSearch =
+        room.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        room.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (room.code && room.code.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (room.tags && room.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase())));
+
+      if (!matchesCat || !matchesSearch) return false;
+
+      // 100-meter Client-Side Geofencing Filter & Live Room Visibility
+      if (locationStatus === 'granted' && userLocation) {
+        const hasCoords = typeof room.lat === 'number' && typeof room.lng === 'number';
+        const distMeters = hasCoords
+          ? calculateHaversineDistance(userLocation.lat, userLocation.lng, room.lat, room.lng)
+          : null;
+
+        // Within 100-meter campus radius
+        const isNearby = distMeters != null && distMeters <= 100;
+
+        // Active live rooms (participants online, active game round, or permanent campus hub)
+        const isLiveRoom = (room.userCount && room.userCount > 0) || room.isGameActive || room.isPermanent;
+
+        return isNearby || isLiveRoom;
+      }
+
+      return true;
+    });
+  }, [rooms, selectedCategory, searchQuery, locationStatus, userLocation]);
 
   const getRoomPurpose = (gameType, category) => {
     if (category === 'Rant' || gameType === 'truthvent') {
@@ -128,7 +202,10 @@ export default function Lobby({
         category: newRoomCategory,
         selectedGame: newRoomGame,
         description: newRoomDesc.trim() || 'A chill space to decompress.',
-        tags: newRoomTags.split(',').map(t => t.trim()).filter(Boolean)
+        tags: newRoomTags.split(',').map(t => t.trim()).filter(Boolean),
+        lat: userLocation?.lat ?? coords.lat,
+        lng: userLocation?.lng ?? coords.lng,
+        idleTimeout: newRoomTimeout
       };
 
       if (viewMode === 'list') {
@@ -142,8 +219,9 @@ export default function Lobby({
             title: newRoomName.trim(),
             code: newRoomCode.trim().toUpperCase() || undefined,
             type: 'room',
-            lat: coords.lat,
-            lng: coords.lng,
+            lat: userLocation?.lat ?? coords.lat,
+            lng: userLocation?.lng ?? coords.lng,
+            idleTimeout: newRoomTimeout,
             description: newRoomDesc.trim() || 'Live student lounge on campus.',
             category: newRoomCategory,
             selectedGame: newRoomGame,
@@ -196,14 +274,16 @@ export default function Lobby({
     setNewRoomCode('');
     setNewRoomDesc('');
     setNewRoomTags('');
+    setNewRoomTimeout('unlimited');
   };
 
   const handleCodeSubmit = (e) => {
     e.preventDefault();
-    if (!joinCodeInput.trim()) return;
-    sounds.playSuccess();
+    const clean = joinCodeInput.trim().replace(/^#/, '').toUpperCase();
+    if (!clean) return;
+    sounds.playPop();
     if (typeof onJoinRoomByCode === 'function') {
-      onJoinRoomByCode(joinCodeInput.trim().toUpperCase());
+      onJoinRoomByCode(clean);
     }
   };
 
@@ -376,6 +456,32 @@ export default function Lobby({
               </button>
             </div>
 
+            {/* Persistent InsForge Campus Boards */}
+            <div className="campus-boards-toggle" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="view-mode-btn hover-lift"
+                onClick={() => {
+                  sounds.playPop();
+                  setIsLostFoundBoardOpen(true);
+                }}
+                title="Campus Lost & Found (InsForge)"
+              >
+                📦 Lost & Found
+              </button>
+              <button
+                type="button"
+                className="view-mode-btn hover-lift"
+                onClick={() => {
+                  sounds.playPop();
+                  setIsTradeBoardOpen(true);
+                }}
+                title="Campus Trade Board (InsForge)"
+              >
+                🤝 Trade Board
+              </button>
+            </div>
+
             <motion.button
               whileHover={{ scale: 1.03, y: -1 }}
               whileTap={{ scale: 0.96 }}
@@ -403,6 +509,22 @@ export default function Lobby({
                   {cat}
                 </button>
               ))}
+
+              {/* Manual Refresh Nearby Rooms (100m) Action */}
+              <button
+                type="button"
+                className={`filter-tab-pill ${isRefreshingLocation ? 'pulsing' : ''}`}
+                style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                onClick={() => {
+                  sounds.playPop();
+                  refreshUserLocation(true);
+                }}
+                title="Refresh nearby rooms within 100m radius"
+              >
+                <span>📍</span>
+                <span>{locationStatus === 'granted' ? 'Nearby (100m)' : 'Location'}</span>
+                <span>{isRefreshingLocation ? '⏳' : '↻'}</span>
+              </button>
             </div>
           )}
         </section>
@@ -436,29 +558,87 @@ export default function Lobby({
         </div>
       ) : (
         <main className="room-grid">
+          {/* Permission Fallback State */}
+          {(locationStatus === 'denied' || locationStatus === 'unavailable') && (
+            <div className="glass-panel" style={{ gridColumn: '1 / -1', padding: '28px 20px', textAlign: 'center', borderColor: 'rgba(245, 158, 11, 0.25)', background: 'rgba(245, 158, 11, 0.03)' }}>
+              <div style={{ fontSize: '1.8rem', marginBottom: '8px' }}>📍</div>
+              <h4 style={{ margin: '0 0 6px', color: 'var(--text-primary)', fontSize: '1rem', fontWeight: 700 }}>
+                Enable location to find nearby rooms
+              </h4>
+              <p style={{ margin: '0 auto 14px', color: 'var(--text-secondary)', fontSize: '0.84rem', maxWidth: '420px', lineHeight: 1.4 }}>
+                Room visibility is limited to a 100-meter campus radius. Enable browser location or retry to discover nearby student lounges.
+              </p>
+              <button
+                type="button"
+                className="btn-pill-primary"
+                onClick={() => refreshUserLocation(true)}
+              >
+                {isRefreshingLocation ? 'Refreshing...' : '📍 Enable Location / Retry'}
+              </button>
+            </div>
+          )}
+
           {filteredRooms.map((room, idx) => {
             const userCount = room.userCount !== undefined ? room.userCount : 1;
             const roomCode = room.code || room.id?.slice(0, 6)?.toUpperCase() || 'LOBBY';
             const purpose = getRoomPurpose(room.selectedGame, room.category);
+            const isTimed = room.idleTimeout && room.idleTimeout !== 'unlimited' && room.expiresAt;
+            const timeoutTotalMs = room.idleTimeoutMs || (typeof room.idleTimeout === 'number' ? room.idleTimeout * 60000 : 900000);
+            const remainingMs = isTimed ? Math.max(0, room.expiresAt - now) : 0;
+            const progressPct = isTimed ? Math.max(2, Math.min(100, (remainingMs / timeoutTotalMs) * 100)) : 100;
+            const remainingMins = isTimed ? Math.max(1, Math.ceil(remainingMs / 60000)) : 0;
 
             return (
               <Reveal key={room.id} index={idx}>
                 <motion.div
                   className="room-card glass-panel-interactive hover-lift"
                   whileHover={{ y: -4 }}
+                  style={{ position: 'relative' }}
                   onClick={() => {
                     sounds.playChime();
                     onJoinRoom(room.id);
                   }}
                 >
+                  {/* Subtle Idle Expiry Progress Bar */}
+                  {isTimed && (
+                    <div className="room-idle-bar-track" title={`Idle timeout: ${room.idleTimeout}m (${remainingMins}m remaining)`}>
+                      <div
+                        className="room-idle-bar-fill"
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                  )}
+
                   <div className="room-card-top">
                     <span className={`room-purpose-badge ${purpose.badgeClass}`} title={`Purpose: ${purpose.label}`}>
                       <span>{purpose.icon}</span>
                       <span>{purpose.label}</span>
                     </span>
-                    <div className="room-user-badge">
-                      <span className="pulsing-ping-dot"></span>
-                      <span>{userCount} online</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {userLocation && typeof room.lat === 'number' && typeof room.lng === 'number' && (() => {
+                        const d = Math.round(calculateHaversineDistance(userLocation.lat, userLocation.lng, room.lat, room.lng));
+                        if (d <= 100) {
+                          return (
+                            <span
+                              className="room-countdown-pill"
+                              style={{ borderColor: 'rgba(16, 185, 129, 0.3)', color: 'var(--accent-sage)', background: 'rgba(16, 185, 129, 0.08)' }}
+                              title="Within 100m campus radius"
+                            >
+                              📍 {d < 10 ? '<10m' : `${d}m`}
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+                      {isTimed && (
+                        <span className="room-countdown-pill" title="Time remaining until idle room vanishes">
+                          ⏱️ {remainingMins}m
+                        </span>
+                      )}
+                      <div className="room-user-badge">
+                        <span className="pulsing-ping-dot"></span>
+                        <span>{userCount > 0 ? `${userCount} online` : (room.isPermanent ? 'Campus Hub' : '0 online')}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -507,7 +687,7 @@ export default function Lobby({
           {filteredRooms.length === 0 && (
             <div className="glass-panel" style={{ gridColumn: '1 / -1', padding: '40px', textAlign: 'center' }}>
               <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                No lounges match "{searchQuery}".
+                {searchQuery ? `No lounges match "${searchQuery}".` : 'No active student lounges found nearby right now.'}
               </p>
               <motion.button
                 whileHover={{ scale: 1.03 }}
@@ -515,7 +695,7 @@ export default function Lobby({
                 className="btn-pill-primary"
                 onClick={() => setIsModalOpen(true)}
               >
-                Create this Lounge ✨
+                Create a Lounge Here ✨
               </motion.button>
             </div>
           )}
@@ -659,6 +839,61 @@ export default function Lobby({
                         value={newRoomTags}
                         onChange={(e) => setNewRoomTags(e.target.value)}
                       />
+                    </div>
+
+                    {/* Inactivity Duration Selector */}
+                    <div className="modal-form-group">
+                      <label className="modal-label">Idle Inactivity Lifetime</label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                        <button
+                          type="button"
+                          className="btn-pill-secondary"
+                          style={{
+                            padding: '8px 10px',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            background: newRoomTimeout === 'unlimited' ? 'var(--accent-sage, #10b981)' : 'var(--bg-well, rgba(255,255,255,0.04))',
+                            color: newRoomTimeout === 'unlimited' ? '#0f172a' : 'var(--text-primary, #f1f5f9)',
+                            borderColor: newRoomTimeout === 'unlimited' ? 'var(--accent-sage, #10b981)' : 'var(--border-subtle, rgba(255,255,255,0.1))'
+                          }}
+                          onClick={() => setNewRoomTimeout('unlimited')}
+                        >
+                          ∞ Unlimited
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-pill-secondary"
+                          style={{
+                            padding: '8px 10px',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            background: newRoomTimeout === 15 ? 'var(--accent-sage, #10b981)' : 'var(--bg-well, rgba(255,255,255,0.04))',
+                            color: newRoomTimeout === 15 ? '#0f172a' : 'var(--text-primary, #f1f5f9)',
+                            borderColor: newRoomTimeout === 15 ? 'var(--accent-sage, #10b981)' : 'var(--border-subtle, rgba(255,255,255,0.1))'
+                          }}
+                          onClick={() => setNewRoomTimeout(15)}
+                        >
+                          ⏱️ 15 min idle
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-pill-secondary"
+                          style={{
+                            padding: '8px 10px',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            background: newRoomTimeout === 30 ? 'var(--accent-sage, #10b981)' : 'var(--bg-well, rgba(255,255,255,0.04))',
+                            color: newRoomTimeout === 30 ? '#0f172a' : 'var(--text-primary, #f1f5f9)',
+                            borderColor: newRoomTimeout === 30 ? 'var(--accent-sage, #10b981)' : 'var(--border-subtle, rgba(255,255,255,0.1))'
+                          }}
+                          onClick={() => setNewRoomTimeout(30)}
+                        >
+                          ⏱️ 30 min idle
+                        </button>
+                      </div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted, #94a3b8)', marginTop: '4px', display: 'block' }}>
+                        Refreshes on any user interaction. Deactivates when quiet.
+                      </span>
                     </div>
                   </>
                 )}
@@ -856,6 +1091,30 @@ export default function Lobby({
             onClose={() => setActiveTradePin(null)}
             onAddComment={onAddTradeComment}
             onJoinRoom={onJoinRoom}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* InsForge Persistent Lost & Found Board Modal */}
+      <AnimatePresence>
+        {isLostFoundBoardOpen && (
+          <LostFoundBoardModal
+            isOpen={isLostFoundBoardOpen}
+            onClose={() => setIsLostFoundBoardOpen(false)}
+            userProfile={userProfile}
+            theme={theme}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* InsForge Persistent Campus Trade Board Modal */}
+      <AnimatePresence>
+        {isTradeBoardOpen && (
+          <TradeBoardModal
+            isOpen={isTradeBoardOpen}
+            onClose={() => setIsTradeBoardOpen(false)}
+            userProfile={userProfile}
+            theme={theme}
           />
         )}
       </AnimatePresence>

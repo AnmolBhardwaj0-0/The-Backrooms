@@ -98,13 +98,25 @@ export default function App() {
       setPins(updatedPins);
     };
 
+    const handleRoomActivityUpdate = ({ roomId, lastActivityAt, expiresAt, idleTimeoutMs }) => {
+      setRooms(prevRooms =>
+        prevRooms.map(r =>
+          r.id === roomId
+            ? { ...r, lastActivityAt, expiresAt, idleTimeoutMs: idleTimeoutMs ?? r.idleTimeoutMs }
+            : r
+        )
+      );
+    };
+
     socket.on('rooms_update', handleRoomsUpdate);
     socket.on('pins_update', handlePinsUpdate);
+    socket.on('room:activity_updated', handleRoomActivityUpdate);
     socket.emit('get_pins');
 
     return () => {
       socket.off('rooms_update', handleRoomsUpdate);
       socket.off('pins_update', handlePinsUpdate);
+      socket.off('room:activity_updated', handleRoomActivityUpdate);
     };
   }, []);
 
@@ -128,9 +140,16 @@ export default function App() {
 
   const handleJoinRoomByCode = (code) => {
     if (!code || !socketRef.current) return;
-    socketRef.current.emit('join_room_by_code', { code, user: userProfile }, ({ success, roomId }) => {
-      if (success && roomId) {
-        handleJoinRoom(roomId);
+    const cleanCode = code.trim().replace(/^#/, '');
+    if (!cleanCode) return;
+
+    socketRef.current.emit('join_room_by_code', { code: cleanCode, user: userProfile }, (res) => {
+      if (res?.success && res?.roomId) {
+        sounds.playSuccess();
+        handleJoinRoom(res.roomId);
+      } else {
+        sounds.playBoing();
+        alert(res?.error || `Lounge with code "${cleanCode.toUpperCase()}" was not found.`);
       }
     });
   };
@@ -207,6 +226,7 @@ export default function App() {
             <Lobby
               rooms={rooms}
               pins={pins}
+              socket={socketRef.current}
               userProfile={userProfile}
               onUpdateUserProfile={setUserProfile}
               onRerollProfile={handleRerollProfile}

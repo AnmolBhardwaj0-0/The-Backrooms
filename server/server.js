@@ -144,6 +144,9 @@ const defaultLounges = [
     selectedGame: 'scribble',
     description: 'Quiet crammers & 2AM chill lo-fi energy. Synchronized canvas & cozy chat.',
     tags: ['Quiet', 'Lo-Fi', 'Study'],
+    lat: 23.17504,
+    lng: 80.02921,
+    idleTimeout: 'unlimited',
     created: Date.now(),
     isPermanent: true
   },
@@ -155,6 +158,9 @@ const defaultLounges = [
     selectedGame: 'scribble',
     description: 'Speed Pictionary rounds with campus prompts. Guess fast & score points!',
     tags: ['Drawing', 'Fast-Paced', 'Pictionary'],
+    lat: 23.17510,
+    lng: 80.02930,
+    idleTimeout: 'unlimited',
     created: Date.now(),
     isPermanent: true
   },
@@ -166,6 +172,9 @@ const defaultLounges = [
     selectedGame: 'trivia',
     description: 'Rapid-fire campus & tech trivia showdown. 14 seconds per question!',
     tags: ['Trivia', 'Buzzer', 'Challenge'],
+    lat: 23.17490,
+    lng: 80.02910,
+    idleTimeout: 'unlimited',
     created: Date.now(),
     isPermanent: true
   },
@@ -177,6 +186,9 @@ const defaultLounges = [
     selectedGame: 'wordchain',
     description: 'Keep the word chain alive without repeating or timing out. Build huge combos!',
     tags: ['WordGame', 'Speed', 'Combo'],
+    lat: 23.17520,
+    lng: 80.02940,
+    idleTimeout: 'unlimited',
     created: Date.now(),
     isPermanent: true
   },
@@ -188,6 +200,9 @@ const defaultLounges = [
     selectedGame: 'emojipop',
     description: 'Fast-paced reaction arcade! Click the popping target emojis before they vanish.',
     tags: ['Arcade', 'Reflex', 'Pop'],
+    lat: 23.17480,
+    lng: 80.02900,
+    idleTimeout: 'unlimited',
     created: Date.now(),
     isPermanent: true
   },
@@ -199,6 +214,9 @@ const defaultLounges = [
     selectedGame: 'truthvent',
     description: 'Zero-filter campus confessionals, cathartic vents, and hilarious dares.',
     tags: ['Confessions', 'Venting', 'Cathartic'],
+    lat: 23.17530,
+    lng: 80.02950,
+    idleTimeout: 'unlimited',
     created: Date.now(),
     isPermanent: true
   }
@@ -254,7 +272,14 @@ function formatRoomForLobby(room) {
     tags: room.tags || [],
     userCount: room.users ? room.users.size : 0,
     created: room.created,
-    isGameActive: room.game?.isActive || false
+    isGameActive: room.game?.isActive || false,
+    lat: typeof room.lat === 'number' ? room.lat : null,
+    lng: typeof room.lng === 'number' ? room.lng : null,
+    isPermanent: room.isPermanent || false,
+    idleTimeout: room.idleTimeout || 'unlimited',
+    idleTimeoutMs: room.idleTimeoutMs || null,
+    lastActivityAt: room.lastActivityAt || room.created,
+    expiresAt: room.expiresAt || null
   };
 }
 
@@ -996,6 +1021,14 @@ io.on('connection', (socket) => {
     if (pinData.type === 'room' && !linkedRoomId) {
       const roomCode = (pinData.code || Math.random().toString(36).substring(2, 8)).toUpperCase();
       linkedRoomId = `lounge-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const idleTimeout = pinData?.idleTimeout || 'unlimited';
+      const idleTimeoutMs = (idleTimeout === 15 || idleTimeout === '15')
+        ? 15 * 60 * 1000
+        : (idleTimeout === 30 || idleTimeout === '30')
+          ? 30 * 60 * 1000
+          : (typeof idleTimeout === 'number' && idleTimeout > 0 ? Math.round(idleTimeout * 60 * 1000) : null);
+      const now = Date.now();
+
       const newRoom = {
         id: linkedRoomId,
         code: roomCode,
@@ -1004,7 +1037,13 @@ io.on('connection', (socket) => {
         selectedGame: pinData.selectedGame || 'scribble',
         description: pinData.description || 'A cozy pin lounge on campus.',
         tags: pinData.tags || ['MapPin'],
-        created: Date.now(),
+        lat: typeof pinData.lat === 'number' ? pinData.lat : null,
+        lng: typeof pinData.lng === 'number' ? pinData.lng : null,
+        idleTimeout,
+        idleTimeoutMs,
+        lastActivityAt: now,
+        expiresAt: idleTimeoutMs ? now + idleTimeoutMs : null,
+        created: now,
         isPermanent: false,
         users: new Map(),
         canvasStrokes: [],
@@ -1200,6 +1239,13 @@ io.on('connection', (socket) => {
     const roomCode = (roomData?.code || Math.random().toString(36).substring(2, 8)).toUpperCase();
     const roomId = `lounge-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const selectedGame = roomData?.selectedGame || 'scribble';
+    const idleTimeout = roomData?.idleTimeout || 'unlimited';
+    const idleTimeoutMs = (idleTimeout === 15 || idleTimeout === '15')
+      ? 15 * 60 * 1000
+      : (idleTimeout === 30 || idleTimeout === '30')
+        ? 30 * 60 * 1000
+        : (typeof idleTimeout === 'number' && idleTimeout > 0 ? Math.round(idleTimeout * 60 * 1000) : null);
+    const now = Date.now();
 
     const newRoom = {
       id: roomId,
@@ -1209,7 +1255,13 @@ io.on('connection', (socket) => {
       selectedGame,
       description: roomData.description || 'A cozy space to vent and recharge.',
       tags: roomData.tags || ['Ephemeral', 'Vent'],
-      created: Date.now(),
+      lat: typeof roomData?.lat === 'number' ? roomData.lat : null,
+      lng: typeof roomData?.lng === 'number' ? roomData.lng : null,
+      idleTimeout,
+      idleTimeoutMs,
+      lastActivityAt: now,
+      expiresAt: idleTimeoutMs ? now + idleTimeoutMs : null,
+      created: now,
       isPermanent: false,
       users: new Map(),
       canvasStrokes: [],
@@ -1243,20 +1295,57 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Room Activity Heartbeat (from client-side P2P or action triggers)
+  socket.on('room:activity', ({ roomId }) => {
+    const targetId = roomId || currentRoomId;
+    if (!targetId) return;
+    const room = rooms.get(targetId);
+    if (!room) return;
+
+    room.lastActivityAt = Date.now();
+    if (room.idleTimeout && room.idleTimeout !== 'unlimited' && room.idleTimeoutMs) {
+      room.expiresAt = Date.now() + room.idleTimeoutMs;
+      io.emit('room:activity_updated', {
+        roomId: targetId,
+        lastActivityAt: room.lastActivityAt,
+        expiresAt: room.expiresAt,
+        idleTimeoutMs: room.idleTimeoutMs
+      });
+    }
+  });
+
   // Join Room by Code
   socket.on('join_room_by_code', ({ code }, callback) => {
-    const searchCode = (code || '').trim().toUpperCase();
-    const targetRoom = Array.from(rooms.values()).find(
-      r => r.code && r.code.toUpperCase() === searchCode
-    );
+    const rawCode = (code || '').trim();
+    const cleanCode = rawCode.replace(/^#/, '').toUpperCase();
+
+    if (!cleanCode) {
+      if (typeof callback === 'function') {
+        callback({ success: false, error: 'Please enter a valid lounge code.' });
+      }
+      return;
+    }
+
+    const targetRoom = Array.from(rooms.values()).find(r => {
+      if (!r) return false;
+      const rCode = (r.code || '').toUpperCase();
+      const rId = (r.id || '').toUpperCase();
+      const rIdClean = (r.id || '').replace(/^LOUNGE-/, '').toUpperCase();
+      const rIdSlice = rIdClean.slice(0, 6);
+
+      return rCode === cleanCode ||
+             rId === cleanCode ||
+             rIdClean === cleanCode ||
+             rIdSlice === cleanCode;
+    });
 
     if (targetRoom) {
       if (typeof callback === 'function') {
-        callback({ success: true, roomId: targetRoom.id });
+        callback({ success: true, roomId: targetRoom.id, code: targetRoom.code });
       }
     } else {
       if (typeof callback === 'function') {
-        callback({ success: false });
+        callback({ success: false, error: `No active lounge found matching code "${cleanCode}".` });
       }
     }
   });
@@ -1295,11 +1384,15 @@ io.on('connection', (socket) => {
     socket.emit('room_joined_data', {
       room: {
         id: room.id,
+        code: room.code,
         name: room.name,
         category: room.category,
         selectedGame: room.game.type,
         description: room.description,
-        tags: room.tags
+        tags: room.tags,
+        lat: typeof room.lat === 'number' ? room.lat : null,
+        lng: typeof room.lng === 'number' ? room.lng : null,
+        isPermanent: room.isPermanent || false
       },
       activeUsers: Array.from(room.users.values()),
       currentPoll: room.currentPoll || null,
@@ -1704,6 +1797,35 @@ app.get('*', (req, res) => {
     });
   }
 });
+
+// Background sweep for idle-expired rooms (every 5 seconds)
+setInterval(() => {
+  const now = Date.now();
+  let changed = false;
+  for (const [roomId, room] of rooms.entries()) {
+    if (!room.isPermanent && room.idleTimeout && room.idleTimeout !== 'unlimited' && room.expiresAt) {
+      if (now >= room.expiresAt) {
+        console.log(`[Room Expiry] Room ${roomId} idle timeout (${room.idleTimeout}m) elapsed. Deactivating.`);
+        io.to(roomId).emit('room_expired', {
+          roomId,
+          message: 'This room has expired due to inactivity.'
+        });
+        clearRoomTimer(room);
+        rooms.delete(roomId);
+        for (const [pinId, pin] of pins.entries()) {
+          if (pin.roomId === roomId) {
+            pins.delete(pinId);
+          }
+        }
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    io.emit('rooms_update', Array.from(rooms.values()).map(formatRoomForLobby));
+    io.emit('pins_update', Array.from(pins.values()));
+  }
+}, 5000);
 
 httpServer.listen(PORT, () => {
   console.log(`🌌 Soulnook Decompression Lounge server live on port ${PORT}`);

@@ -1,0 +1,363 @@
+/* TradeBoardModal.css - Abyssal Void Glassmorphic Trade Board */
+
+.trade-board-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.76);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  padding: 16px;
+}
+
+.trade-board-card {
+  width: 100%;
+  max-width: 580px;
+  max-height: 88vh;
+  background: var(--bg-surface, #121318);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-lg, 18px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.88), 0 0 32px rgba(16, 185, 129, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.trade-board-card[data-theme='light'] {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.14);
+}
+
+.trade-board-header {
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-well, rgba(255, 255, 255, 0.02));
+  flex-shrink: 0;
+}
+
+.trade-board-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.trade-board-icon {
+  font-size: 1.5rem;
+  padding: 6px;
+  background: rgba(16, 185, 129, 0.12);
+  border-radius: 10px;
+}
+
+.trade-board-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.trade-board-subtitle {
+  font-size: 0.72rem;
+  color: var(--text-muted, #94a3b8);
+  display: block;
+}
+
+.trade-board-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.1rem;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.trade-board-close-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary, #f1f5f9);
+}
+
+.trade-board-tabs-bar {
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.trade-board-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.trade-tab-btn {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  background: transparent;
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.trade-tab-btn.active {
+  background: var(--accent-sage, #10b981);
+  color: #0b0f19;
+  border-color: transparent;
+}
+
+.trade-filter-pills {
+  display: flex;
+  gap: 4px;
+}
+
+.trade-filter-btn {
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.trade-filter-btn:hover {
+  color: var(--text-primary, #f1f5f9);
+}
+
+.trade-filter-btn.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary, #f1f5f9);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.trade-board-body {
+  padding: 18px 22px;
+  overflow-y: auto;
+  max-height: 58vh;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.trade-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.trade-item-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.07));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.trade-item-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.trade-item-card.resolved {
+  opacity: 0.6;
+}
+
+.trade-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.trade-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+}
+
+.badge-open {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-resolved {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.trade-item-time {
+  font-size: 0.72rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.trade-resolve-btn {
+  background: transparent;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+  border-radius: 8px;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.trade-resolve-btn:hover {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: #10b981;
+}
+
+.trade-exchange-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trade-exchange-box {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trade-exchange-box.offering {
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.trade-exchange-box.wanting {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.trade-box-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted, #94a3b8);
+}
+
+.trade-exchange-box.offering .trade-box-tag {
+  color: #a78bfa;
+}
+
+.trade-exchange-box.wanting .trade-box-tag {
+  color: #6ee7b7;
+}
+
+.trade-box-val {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.trade-exchange-arrow {
+  font-size: 1.1rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.trade-item-desc {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary, #cbd5e1);
+  line-height: 1.4;
+}
+
+.trade-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.trade-author-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.74rem;
+  color: var(--text-secondary, #cbd5e1);
+}
+
+/* Create Form */
+.trade-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.trade-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trade-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary, #cbd5e1);
+}
+
+.trade-input, .trade-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: 10px;
+  color: var(--text-primary, #f1f5f9);
+  font-size: 0.85rem;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.trade-input:focus, .trade-textarea:focus {
+  outline: none;
+  border-color: var(--accent-sage, #10b981);
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+}
+
+.trade-author-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.trade-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.trade-loading-state, .trade-empty-state {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.88rem;
+}
